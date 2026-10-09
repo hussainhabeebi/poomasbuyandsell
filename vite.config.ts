@@ -1,12 +1,17 @@
 import vinext from "vinext";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 import { connectorPreview } from "./build/connector-preview-plugin.mjs";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
+// Omit database_id when none is supplied: Wrangler can provision D1 on deploy.
+// A fabricated ID prevents provisioning and causes Cloudflare API error 10181.
+const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID?.trim();
+if (databaseId === "00000000-0000-4000-8000-000000000000") {
+  throw new Error("CLOUDFLARE_D1_DATABASE_ID must be a real D1 database ID.");
+}
 
 const { d1, r2 } = hostingConfig;
 
@@ -15,6 +20,7 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
+  name: "poomasbuyandsell",
   assets: { run_worker_first: ["/listing/*", "/guides/*"] },
   main: "./build/sites-worker.ts",
   compatibility_flags: ["nodejs_compat"],
@@ -23,7 +29,8 @@ const localBindingConfig = {
         {
           binding: d1,
           database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          ...(databaseId ? { database_id: databaseId } : {}),
+          migrations_dir: resolve("./drizzle"),
         },
       ]
     : [],

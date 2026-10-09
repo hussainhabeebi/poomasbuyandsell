@@ -61,3 +61,11 @@ After DNS is active and public access is enabled: verify www/apex routing and re
 Home editorial category images sourced through Unsplash:
 - Coralt Zou, Dubai glass architecture: https://unsplash.com/photos/i3N0m2omOEM
 - Black SUV photo: https://unsplash.com/s/photos/black-suv (asset photo-1645791608306-6db92b84d498)
+
+## Direct Cloudflare deployment
+
+Worker name: `poomasbuyandsell`. Build with `pnpm exec vite build`; deploy with `pnpm exec wrangler deploy --config dist/server/wrangler.json`. D1 `DB` uses `site-creator-d1` and R2 `BUCKET` uses `site-creator-r2`, preserving the names from the initial deployment. When no D1 ID is supplied, Wrangler provisions/resolves the database instead of receiving a fabricated placeholder. To bind an existing database explicitly, set `CLOUDFLARE_D1_DATABASE_ID` to its actual UUID in the **build environment**, then rebuild. This is not a secret. Do not use the development placeholder UUID.
+
+After provisioning, pin the real D1 UUID as that build variable. Apply the schema before using listings: `pnpm exec wrangler d1 migrations apply site-creator-d1 --remote --config dist/server/wrangler.json`. The generated configuration carries the `drizzle` migration directory. Migrations create schema, not sample listings; don't re-import an already-applied SQL file manually. For a database whose schema was previously applied outside Wrangler, reconcile migration history before applying it again.
+
+Direct Cloudflare hosting still needs an independent authentication integration. The current ChatGPT sign-in paths and identity headers belong to the Sites dispatcher and must not be treated as secure authentication on a directly exposed Worker. The D1 configuration fix does not make standalone account sign-in ready.
