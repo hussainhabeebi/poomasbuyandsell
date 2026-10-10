@@ -60,6 +60,29 @@ export default defineConfig(async ({ command }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    // vinext's <Link> dynamically imports its navigation shim. When Rolldown
+    // merges that shim into the browser entry chunk, the dynamic import gets
+    // the entry chunk's exports instead of the shim's, so `navigateClientSide`
+    // is undefined and link clicks do nothing. A dedicated chunk avoids that.
+    environments: {
+      client: {
+        build: {
+          rolldownOptions: {
+            output: {
+              codeSplitting: {
+                groups: [
+                  {
+                    name: "vinext-navigation",
+                    test: /[\\/]vinext[\\/]dist[\\/]shims[\\/]navigation\.js$/,
+                    priority: 100,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
     server: {
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }
