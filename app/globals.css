@@ -19,3 +19,22 @@
 @keyframes benefits-ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @media(max-width:650px){.benefit-strip{padding-block:16px}.benefit-group li{font-size:12px}.benefit-group svg{width:18px;height:18px}}
 @media(prefers-reduced-motion:reduce){.benefit-track{animation:none;transform:none;width:100%;will-change:auto}.benefit-group{min-width:0;width:100%;flex-wrap:wrap;gap:16px 28px}.benefit-group[aria-hidden="true"]{display:none}}
+
+/* Homepage first-listing panel and promotions banner. */
+.homepage-empty{width:100%;min-height:310px;padding:35px 32px;border-radius:14px;background:var(--bg)}
+.homepage-empty .empty-icon{width:60px;height:60px;border-radius:14px;margin-bottom:18px}
+.homepage-empty .empty-icon svg{width:30px;height:30px}
+.homepage-empty h3{font-size:23px;line-height:1.3}
+.homepage-empty p{max-width:600px;font-size:15px;line-height:1.7;margin:12px 0 24px}
+.homepage-empty>.button{min-height:52px;padding:15px 26px;font-size:15px;margin-top:10px}
+.homepage-promo{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:32px;align-items:center;padding:38px 40px;margin-top:55px;border-radius:14px}
+.homepage-promo .promo-symbol{display:flex;width:112px;min-width:0;height:120px;padding:22px 10px;gap:20px;border-radius:14px}
+.homepage-promo .promo-symbol svg{width:45px;height:45px;flex-shrink:0}
+.homepage-promo .promo-symbol>span{font-size:7px;white-space:nowrap;letter-spacing:1px}
+.homepage-promo-copy{min-width:0}
+.homepage-promo .eyebrow{font-size:11px;letter-spacing:1.9px;margin-bottom:16px}
+.homepage-promo h2{font-size:32px;line-height:1.2}
+.homepage-promo p{font-size:15px;line-height:1.7;margin:14px 0 0}
+.homepage-promo>.button{margin:0;min-height:52px;padding:15px 24px;font-size:15px}
+@media(max-width:1100px){.homepage-promo{grid-template-columns:96px minmax(0,1fr);gap:24px;padding:32px}.homepage-promo .promo-symbol{width:96px;height:110px}.homepage-promo>.button{grid-column:2;justify-self:start}.homepage-promo h2{font-size:30px}.homepage-promo p br{display:none}}
+@media(max-width:650px){.homepage-empty{min-height:0;padding:32px 20px}.homepage-empty h3{font-size:22px}.homepage-empty p{font-size:14px;margin-bottom:20px}.homepage-empty>.button{width:100%;max-width:300px;font-size:14px}.homepage-promo{grid-template-columns:minmax(0,1fr);gap:24px;padding:30px 24px;margin-top:35px}.homepage-promo .promo-symbol{width:96px;height:110px}.homepage-promo .eyebrow{font-size:9px;line-height:1.6;margin-bottom:12px}.homepage-promo h2{font-size:29px}.homepage-promo p{font-size:14px}.homepage-promo>.button{grid-column:1;width:100%;font-size:14px}}
