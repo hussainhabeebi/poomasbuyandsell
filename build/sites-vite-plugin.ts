@@ -1,6 +1,6 @@
 // Vendored from @openai/sites-vite-plugin 0.2.0 (openai/sites#9).
 // See sites-vite-plugin.LICENSE for the upstream MIT license.
-// Modified: the local sign-in mock emulates Cloudflare Access instead of ChatGPT.
+// Modified: the local sign-in mock emulates Sign in with Google instead of ChatGPT.
 import { access, cp, mkdir, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
@@ -12,7 +12,7 @@ const localFullName = "Seedy";
 const localCookieName = "__sites_local_auth";
 const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 const localAddresses = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-// Local stand-in for Cloudflare Access sign-in (see app/cloudflare-auth.ts).
+// Local stand-in for Sign in with Google (see app/cloudflare-auth.ts).
 const authPaths = new Set(["/signin", "/signout"]);
 
 async function exists(path: string): Promise<boolean> {

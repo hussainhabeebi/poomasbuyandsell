@@ -10,17 +10,17 @@ The first release has no fabricated inventory, seller claims, inspection badges,
 
 ## Accounts and roles
 
-Sign-in uses **Cloudflare Access** (Zero Trust). Public browsing needs no sign-in. Listing submissions, saved listings, enquiries, promotions and the seller dashboard require sign-in. `ADMIN_EMAILS` is a comma-separated server-side administrator allowlist. Ownership and administrator checks are enforced on each write.
+Sign-in uses **Sign in with Google**. Public browsing needs no sign-in. Listing submissions, saved listings, enquiries, promotions and the seller dashboard require sign-in. `ADMIN_EMAILS` is a comma-separated server-side administrator allowlist (use the admins' Google email addresses). Ownership and administrator checks are enforced on each write.
 
-The Worker verifies the Access JWT itself (`Cf-Access-Jwt-Assertion` header or `CF_Authorization` cookie) against `https://<team>/cdn-cgi/access/certs`, checking signature, audience, issuer and expiry, so the site is safe to expose directly on Cloudflare. Setup in the Cloudflare Zero Trust dashboard:
+`/signin?return_to=…` starts the Google authorization code flow (with state and PKCE). `/auth/google/callback` exchanges the code server-side, accepts only accounts with a verified email, and stores the account in an HttpOnly session cookie signed with `SESSION_SECRET` (30 days). `/signout` clears it. User IDs are the Google account `sub`, so listings created under earlier sign-in methods are not linked to the new accounts automatically.
 
-1. **Settings → Authentication**: add the login methods buyers and sellers should use (one-time PIN by email, Google, etc.).
-2. **Access → Applications → Add → Self-hosted**: domain `www.poomasbuyandsell.com` with paths `/signin`, `/account` and `/admin`. Add an **Allow** policy (for an open marketplace, include *Everyone*; one-time PIN then verifies each email). Leave the rest of the site unprotected so public pages stay public.
-3. Copy the application's **Audience (AUD) tag** into `CF_ACCESS_AUD` and your team domain (`<team>.cloudflareaccess.com`) into `CF_ACCESS_TEAM_DOMAIN`, as Worker variables.
+Setup:
 
-`/signin?return_to=…` triggers the Access login and then returns to the page; `/signout` goes to `/cdn-cgi/access/logout`. User IDs are the Access `sub` claim, so listings created under the previous ChatGPT sign-in are not linked to the new accounts automatically.
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project, then **APIs & Services → OAuth consent screen**: app name *Poomas Buy & Sell*, support email, audience **External**, and publish the app (**In production**).
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Authorized redirect URIs: `https://www.poomasbuyandsell.com/auth/google/callback` and `https://poomasbuyandsell.com/auth/google/callback` (plus any `*.workers.dev` URL you use).
+3. Add Worker secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `SESSION_SECRET` (a long random string, e.g. `openssl rand -base64 32`). Changing `SESSION_SECRET` signs everyone out.
 
-In `pnpm dev`, `/signin` signs in a local test user (`seedy@sites.test`) without Cloudflare. The smoke test sends local-only `x-poomas-dev-user-*` headers, which the Worker trusts only in the dev server, or with `AUTH_TRUST_LOCAL_HEADERS=true` on a loopback host — never set that variable in production.
+In `pnpm dev`, `/signin` signs in a local test user (`seedy@sites.test`) without Google. The smoke test sends local-only `x-poomas-dev-user-*` headers, which the Worker trusts only in the dev server, or with `AUTH_TRUST_LOCAL_HEADERS=true` on a loopback host — never set that variable in production.
 
 ## Runtime configuration
 
@@ -29,8 +29,9 @@ Configure through hosting environment settings; never commit secrets or place th
 | Variable | Purpose |
 | --- | --- |
 | `ADMIN_EMAILS` | Administrator email allowlist |
-| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Zero Trust team domain, e.g. `poomas.cloudflareaccess.com` |
-| `CF_ACCESS_AUD` | Audience tag of the Cloudflare Access application |
+| `GOOGLE_CLIENT_ID` (secret) | Google OAuth web client ID |
+| `GOOGLE_CLIENT_SECRET` (secret) | Google OAuth web client secret |
+| `SESSION_SECRET` (secret) | Long random string that signs session cookies |
 | `PAYMENT_RETURN_ORIGIN` | Actual published HTTPS origin for Nomod return pages |
 | `NOMOD_API_KEY` (secret) | Verified merchant's general Nomod API key |
 | `NOMOD_WEBHOOK_SECRET` (secret) | Nomod API webhook Svix signing secret |
@@ -80,4 +81,4 @@ Worker name: `poomasbuyandsell`. Build with `pnpm exec vite build`; deploy with 
 
 After provisioning, pin the real D1 UUID as that build variable. Apply the schema before using listings: `pnpm exec wrangler d1 migrations apply site-creator-d1 --remote --config dist/server/wrangler.json`. The generated configuration carries the `drizzle` migration directory. Migrations create schema, not sample listings; don't re-import an already-applied SQL file manually. For a database whose schema was previously applied outside Wrangler, reconcile migration history before applying it again.
 
-Account sign-in on direct Cloudflare hosting requires the Cloudflare Access application and the `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` variables described under **Accounts and roles**.
+Account sign-in requires the Google OAuth client and the `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `SESSION_SECRET` Worker secrets described under **Accounts and roles**.

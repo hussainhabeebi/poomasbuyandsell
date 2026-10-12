@@ -1,6 +1,6 @@
 import { database, isAdmin } from './server';
 import { decodeListing, publicListing, Listing, SITE_URL } from './catalog';
-import { getUser } from '@/app/cloudflare-auth';
+import { getUser } from '@/app/auth';
 import type { Viewer } from '@/components/marketplace';
 import type { Metadata } from 'next';
 export async function viewer(): Promise<Viewer> { const u = await getUser(); return u ? { name: u.displayName, email: u.email, admin: isAdmin(u.email) } : null; }

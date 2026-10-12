@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { getUser } from '@/app/cloudflare-auth';
+import { getUser } from '@/app/auth';
 export function database() { if (!env.DB)
     throw new Error('Storage is temporarily unavailable. Please try again.'); return env.DB; }
 export function setting(key: string) { return (env as unknown as Record<string, string>)[key] || ''; }

@@ -1,5 +1,5 @@
 import { Dashboard } from '@/components/marketplace';
-import { requireUser } from '@/app/cloudflare-auth';
+import { requireUser } from '@/app/auth';
 import { isAdmin } from '@/lib/server';
 import { meta } from '@/lib/pages';
 export const dynamic = 'force-dynamic';

@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { getUser } from '@/app/cloudflare-auth';
+import { getUser } from '@/app/auth';
 import { database, isAdmin, failure } from '@/lib/server';
 export async function GET(request: Request, { params }: {
     params: Promise<{
