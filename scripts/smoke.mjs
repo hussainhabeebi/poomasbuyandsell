@@ -2,7 +2,7 @@ import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const port=8788,origin=`http://127.0.0.1:${port}`;
-const server=spawn(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','dev','--config','dist/server/wrangler.json','--local','--persist-to','.wrangler/state','--ip','127.0.0.1','--port',String(port),'--inspector-port','0','--var','ADMIN_EMAILS:qa-admin@example.test'],{stdio:['ignore','pipe','pipe'],env:{...process.env,WRANGLER_SEND_METRICS:'false'}});
+const server=spawn(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','dev','--config','dist/server/wrangler.json','--local','--persist-to','.wrangler/state','--ip','127.0.0.1','--port',String(port),'--inspector-port','0','--var','ADMIN_EMAILS:qa-admin@example.test','--var','AUTH_TRUST_LOCAL_HEADERS:true'],{stdio:['ignore','pipe','pipe'],env:{...process.env,WRANGLER_SEND_METRICS:'false'}});
 let logs='';server.stdout.on('data',d=>{logs+=d});server.stderr.on('data',d=>{logs+=d});
 try{
  await new Promise((resolve,reject)=>{const deadline=setTimeout(()=>reject(new Error('Worker startup timed out')),25000);const check=setInterval(()=>{if(logs.includes(`Ready on ${origin}`)){clearTimeout(deadline);clearInterval(check);resolve()}},100);server.on('exit',code=>{clearTimeout(deadline);clearInterval(check);reject(new Error('Worker exited '+code))})});
@@ -12,7 +12,7 @@ try{
  for(const path of ['/api/market','/api/upload','/api/ai','/api/checkout']){let r;for(let attempt=0;attempt<3;attempt++){r=await fetch(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});if(r.status!==503)break;const t=await r.text();if(!t.includes('restarted mid-request'))break;}assert.equal(r.status,401,path);console.log('PASS anonymous write blocked',path)}
  for(const path of ['/guides/nonexistent','/listing/nonexistent']){assert.equal((await fetch(origin+path,{signal:AbortSignal.timeout(10000)})).status,404);console.log('PASS 404',path)}
  console.log('21 HTTP checks passed');
- const users={seller:{'oai-authenticated-user-id':'qa-seller','oai-authenticated-user-email':'qa-seller@example.test'},buyer:{'oai-authenticated-user-id':'qa-buyer','oai-authenticated-user-email':'qa-buyer@example.test'},admin:{'oai-authenticated-user-id':'qa-admin','oai-authenticated-user-email':'qa-admin@example.test'}};
+ const users={seller:{'x-poomas-dev-user-id':'qa-seller','x-poomas-dev-user-email':'qa-seller@example.test'},buyer:{'x-poomas-dev-user-id':'qa-buyer','x-poomas-dev-user-email':'qa-buyer@example.test'},admin:{'x-poomas-dev-user-id':'qa-admin','x-poomas-dev-user-email':'qa-admin@example.test'}};
  async function write(payload,user=users.seller,path='/api/market'){
   let response;for(let i=0;i<3;i++){response=await fetch(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...user},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});if(response.status!==503)break;const text=await response.clone().text();if(!text.includes('restarted mid-request'))break;}return response;
  }

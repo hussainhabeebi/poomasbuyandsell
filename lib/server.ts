@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:workers';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getUser } from '@/app/cloudflare-auth';
 export function database() { if (!env.DB)
     throw new Error('Storage is temporarily unavailable. Please try again.'); return env.DB; }
 export function setting(key: string) { return (env as unknown as Record<string, string>)[key] || ''; }
-export async function identity() { const user = await getChatGPTUser(); if (!user)
+export async function identity() { const user = await getUser(); if (!user)
     throw new HttpError('Please sign in to continue.', 401); return user; }
 export function isAdmin(email: string) { return setting('ADMIN_EMAILS').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase()); }
 export class HttpError extends Error {

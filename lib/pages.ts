@@ -1,9 +1,9 @@
 import { database, isAdmin } from './server';
 import { decodeListing, publicListing, Listing, SITE_URL } from './catalog';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getUser } from '@/app/cloudflare-auth';
 import type { Viewer } from '@/components/marketplace';
 import type { Metadata } from 'next';
-export async function viewer(): Promise<Viewer> { const u = await getChatGPTUser(); return u ? { name: u.displayName, email: u.email, admin: isAdmin(u.email) } : null; }
+export async function viewer(): Promise<Viewer> { const u = await getUser(); return u ? { name: u.displayName, email: u.email, admin: isAdmin(u.email) } : null; }
 export async function inventory(): Promise<{
     listings: Listing[];
     error?: string;

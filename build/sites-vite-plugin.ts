@@ -1,5 +1,6 @@
 // Vendored from @openai/sites-vite-plugin 0.2.0 (openai/sites#9).
 // See sites-vite-plugin.LICENSE for the upstream MIT license.
+// Modified: the local sign-in mock emulates Cloudflare Access instead of ChatGPT.
 import { access, cp, mkdir, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
@@ -11,11 +12,8 @@ const localFullName = "Seedy";
 const localCookieName = "__sites_local_auth";
 const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 const localAddresses = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-const authPaths = new Set([
-  "/signin-with-chatgpt",
-  "/signout-with-chatgpt",
-  "/callback",
-]);
+// Local stand-in for Cloudflare Access sign-in (see app/cloudflare-auth.ts).
+const authPaths = new Set(["/signin", "/signout"]);
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -46,7 +44,7 @@ export function sites({ mockAuth = true } = {}): Plugin {
       server.config.logger.info(`Sites local sign-in: ${localEmail}`);
       server.middlewares.use((request, response, next) => {
         for (const name of Object.keys(request.headers)) {
-          if (name.startsWith("oai-authenticated-user-")) {
+          if (name.startsWith("x-poomas-dev-user-")) {
             removeHeader(request, name);
           }
         }
@@ -97,27 +95,13 @@ export function sites({ mockAuth = true } = {}): Plugin {
           }
         }
 
-        if (url.pathname === "/callback") {
-          respond(response, 501);
-          return;
-        }
-
-        const signIn = url.pathname === "/signin-with-chatgpt";
-        const signOut = url.pathname === "/signout-with-chatgpt";
+        const signIn = url.pathname === "/signin";
+        const signOut = url.pathname === "/signout";
         if (!signIn && !signOut) {
           if (signInCookies.length === 1 && signInCookies[0] === "1") {
-            setHeader(request, "oai-authenticated-user-id", localUserId);
-            setHeader(request, "oai-authenticated-user-email", localEmail);
-            setHeader(
-              request,
-              "oai-authenticated-user-full-name",
-              localFullName,
-            );
-            setHeader(
-              request,
-              "oai-authenticated-user-full-name-encoding",
-              "percent-encoded-utf-8",
-            );
+            setHeader(request, "x-poomas-dev-user-id", localUserId);
+            setHeader(request, "x-poomas-dev-user-email", localEmail);
+            setHeader(request, "x-poomas-dev-user-name", localFullName);
           }
           next();
           return;

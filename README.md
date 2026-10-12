@@ -10,7 +10,17 @@ The first release has no fabricated inventory, seller claims, inspection badges,
 
 ## Accounts and roles
 
-This deployment uses platform-managed **Sign in with ChatGPT**. Public browsing is independent of sign-in when the hosting audience is public. Listing submissions, saved listings, enquiries, promotions and seller dashboard require sign-in. `ADMIN_EMAILS` is a comma-separated server-side administrator allowlist. Ownership and administrator checks are enforced on each write. Platform access remains owner-private until explicitly opened by the owner. This release does not provide email/password accounts or external OAuth.
+Sign-in uses **Cloudflare Access** (Zero Trust). Public browsing needs no sign-in. Listing submissions, saved listings, enquiries, promotions and the seller dashboard require sign-in. `ADMIN_EMAILS` is a comma-separated server-side administrator allowlist. Ownership and administrator checks are enforced on each write.
+
+The Worker verifies the Access JWT itself (`Cf-Access-Jwt-Assertion` header or `CF_Authorization` cookie) against `https://<team>/cdn-cgi/access/certs`, checking signature, audience, issuer and expiry, so the site is safe to expose directly on Cloudflare. Setup in the Cloudflare Zero Trust dashboard:
+
+1. **Settings → Authentication**: add the login methods buyers and sellers should use (one-time PIN by email, Google, etc.).
+2. **Access → Applications → Add → Self-hosted**: domain `www.poomasbuyandsell.com` with paths `/signin`, `/account` and `/admin`. Add an **Allow** policy (for an open marketplace, include *Everyone*; one-time PIN then verifies each email). Leave the rest of the site unprotected so public pages stay public.
+3. Copy the application's **Audience (AUD) tag** into `CF_ACCESS_AUD` and your team domain (`<team>.cloudflareaccess.com`) into `CF_ACCESS_TEAM_DOMAIN`, as Worker variables.
+
+`/signin?return_to=…` triggers the Access login and then returns to the page; `/signout` goes to `/cdn-cgi/access/logout`. User IDs are the Access `sub` claim, so listings created under the previous ChatGPT sign-in are not linked to the new accounts automatically.
+
+In `pnpm dev`, `/signin` signs in a local test user (`seedy@sites.test`) without Cloudflare. The smoke test sends local-only `x-poomas-dev-user-*` headers, which the Worker trusts only in the dev server, or with `AUTH_TRUST_LOCAL_HEADERS=true` on a loopback host — never set that variable in production.
 
 ## Runtime configuration
 
@@ -19,6 +29,8 @@ Configure through hosting environment settings; never commit secrets or place th
 | Variable | Purpose |
 | --- | --- |
 | `ADMIN_EMAILS` | Administrator email allowlist |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Zero Trust team domain, e.g. `poomas.cloudflareaccess.com` |
+| `CF_ACCESS_AUD` | Audience tag of the Cloudflare Access application |
 | `PAYMENT_RETURN_ORIGIN` | Actual published HTTPS origin for Nomod return pages |
 | `NOMOD_API_KEY` (secret) | Verified merchant's general Nomod API key |
 | `NOMOD_WEBHOOK_SECRET` (secret) | Nomod API webhook Svix signing secret |
@@ -68,4 +80,4 @@ Worker name: `poomasbuyandsell`. Build with `pnpm exec vite build`; deploy with 
 
 After provisioning, pin the real D1 UUID as that build variable. Apply the schema before using listings: `pnpm exec wrangler d1 migrations apply site-creator-d1 --remote --config dist/server/wrangler.json`. The generated configuration carries the `drizzle` migration directory. Migrations create schema, not sample listings; don't re-import an already-applied SQL file manually. For a database whose schema was previously applied outside Wrangler, reconcile migration history before applying it again.
 
-Direct Cloudflare hosting still needs an independent authentication integration. The current ChatGPT sign-in paths and identity headers belong to the Sites dispatcher and must not be treated as secure authentication on a directly exposed Worker. The D1 configuration fix does not make standalone account sign-in ready.
+Account sign-in on direct Cloudflare hosting requires the Cloudflare Access application and the `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` variables described under **Accounts and roles**.

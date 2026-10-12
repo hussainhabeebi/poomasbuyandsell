@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getUser } from '@/app/cloudflare-auth';
 import { database, isAdmin, failure } from '@/lib/server';
 export async function GET(request: Request, { params }: {
     params: Promise<{
@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: {
         return new Response('Not found', { status: 404 });
     const publicMedia = ['published', 'sold'].includes(row.status) && JSON.parse(row.images || '[]').includes(`/api/media/${id}`);
     if (!publicMedia) {
-        const user = await getChatGPTUser();
+        const user = await getUser();
         if (!user || (user.userId !== row.owner_id && !isAdmin(user.email)))
             return new Response('Not found', { status: 404 });
     }
