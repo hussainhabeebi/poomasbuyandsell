@@ -38,3 +38,22 @@
 .homepage-promo>.button{margin:0;min-height:52px;padding:15px 24px;font-size:15px}
 @media(max-width:1100px){.homepage-promo{grid-template-columns:96px minmax(0,1fr);gap:24px;padding:32px}.homepage-promo .promo-symbol{width:96px;height:110px}.homepage-promo>.button{grid-column:2;justify-self:start}.homepage-promo h2{font-size:30px}.homepage-promo p br{display:none}}
 @media(max-width:650px){.homepage-empty{min-height:0;padding:32px 20px}.homepage-empty h3{font-size:22px}.homepage-empty p{font-size:14px;margin-bottom:20px}.homepage-empty>.button{width:100%;max-width:300px;font-size:14px}.homepage-promo{grid-template-columns:minmax(0,1fr);gap:24px;padding:30px 24px;margin-top:35px}.homepage-promo .promo-symbol{width:96px;height:110px}.homepage-promo .eyebrow{font-size:9px;line-height:1.6;margin-bottom:12px}.homepage-promo h2{font-size:29px}.homepage-promo p{font-size:14px}.homepage-promo>.button{grid-column:1;width:100%;font-size:14px}}
+
+/* Keep the approved two-panel layout wide on large desktop screens. */
+@media(min-width:1321px){
+.homepage-empty,.homepage-promo{width:calc(100vw - 80px);margin-inline:calc((100% - (100vw - 80px))/2)}
+.homepage-empty{min-height:clamp(330px,23.2vw,440px);padding:clamp(35px,2.54vw,48px) 32px}
+.homepage-empty .empty-icon{width:clamp(60px,4.35vw,82px);height:clamp(60px,4.35vw,82px);border-radius:clamp(14px,1.1vw,20px);margin-bottom:clamp(18px,1.45vw,28px)}
+.homepage-empty .empty-icon svg{width:clamp(30px,2.2vw,42px);height:clamp(30px,2.2vw,42px)}
+.homepage-empty h3{font-size:clamp(23px,1.6vw,30px)}
+.homepage-empty p{max-width:clamp(600px,43vw,810px);font-size:clamp(15px,1.12vw,21px);margin:clamp(12px,.85vw,16px) 0 clamp(24px,1.8vw,34px)}
+.homepage-empty>.button,.homepage-promo>.button{min-height:clamp(52px,3.92vw,74px);padding:clamp(15px,1.15vw,22px) clamp(26px,1.8vw,34px);font-size:clamp(15px,1.12vw,21px)}
+.homepage-empty>.button svg{width:clamp(17px,1.25vw,24px);height:clamp(17px,1.25vw,24px)}
+.homepage-promo{grid-template-columns:clamp(112px,8.3vw,158px) minmax(0,1fr) auto;gap:clamp(32px,2.54vw,48px);padding:clamp(38px,2.9vw,55px) clamp(40px,3vw,56px);margin-top:clamp(55px,4.35vw,82px);border-radius:clamp(14px,1.1vw,20px)}
+.homepage-promo .promo-symbol{width:clamp(112px,8.3vw,158px);height:clamp(120px,8.8vw,166px);gap:clamp(20px,1.8vw,34px);padding:clamp(22px,1.7vw,32px) 10px}
+.homepage-promo .promo-symbol svg{width:clamp(45px,3.2vw,60px);height:clamp(45px,3.2vw,60px)}
+.homepage-promo .promo-symbol>span{font-size:clamp(7px,.53vw,10px)}
+.homepage-promo .eyebrow{font-size:clamp(11px,.85vw,16px);margin-bottom:clamp(16px,1.25vw,24px)}
+.homepage-promo h2{font-size:clamp(32px,2.37vw,44px)}
+.homepage-promo p{font-size:clamp(15px,1.12vw,21px);margin-top:clamp(14px,1.1vw,20px)}
+}
