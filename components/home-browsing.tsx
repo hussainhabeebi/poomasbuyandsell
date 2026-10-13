@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { EMIRATES } from '@/lib/catalog';
 import { BROWSE_CATEGORIES, browseHref } from '@/lib/browsing';
+export { BrowseLocations } from './location-browse';
 
 const CATEGORY_PHOTOS = {
     'property-sale': { name: 'commercial-building', alt: 'Modern glass commercial building exterior' },
@@ -28,12 +29,5 @@ export function BrowseEmirates() {
     return <section className="home-emirate-browse" aria-labelledby="emirate-browse-title">
         <div className="section-heading"><div><span className="eyebrow">FIND YOUR PLACE</span><h2 id="emirate-browse-title">Explore listings across the UAE</h2></div></div>
         <ul className="home-emirate-grid">{EMIRATES.map(emirate => <li key={emirate}><Link href={browseHref('/', '', emirate) + '#browse'} className="home-emirate-card"><img src={`/images/emirates/${EMIRATE_PHOTOS[emirate]}.webp`} alt="" width={800} height={500} loading="lazy" decoding="async"/><span className="emirate-name">{emirate}</span><span className="emirate-arrow" aria-hidden="true"><ArrowUpRight size={17}/></span></Link></li>)}</ul>
-    </section>;
-}
-
-export function BrowseLocations() {
-    return <section className="home-location-browse" aria-labelledby="location-browse-title">
-        <span className="eyebrow">EXPLORE YOUR OPTIONS</span><h2 id="location-browse-title">Explore properties and vehicles by location</h2>
-        <div className="home-location-grid">{EMIRATES.map(emirate => <nav key={emirate} aria-label={`Listings in ${emirate}`}><h3>{emirate}</h3><ul>{BROWSE_CATEGORIES.map(category => <li key={category.id}><Link href={browseHref(category.path, category.intent, emirate)}>{category.locationLabel} in {emirate}</Link></li>)}</ul></nav>)}</div>
     </section>;
 }
