@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, MapPin } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { EMIRATES } from '@/lib/catalog';
 import { BROWSE_CATEGORIES, browseHref } from '@/lib/browsing';
 
@@ -19,10 +19,15 @@ export function BrowseCategories() {
     </section>;
 }
 
+const EMIRATE_PHOTOS: Record<string, string> = {
+    Dubai: 'dubai', 'Abu Dhabi': 'abu-dhabi', Sharjah: 'sharjah', Ajman: 'ajman',
+    'Ras Al Khaimah': 'ras-al-khaimah', Fujairah: 'fujairah', 'Umm Al Quwain': 'umm-al-quwain',
+};
+
 export function BrowseEmirates() {
     return <section className="home-emirate-browse" aria-labelledby="emirate-browse-title">
         <div className="section-heading"><div><span className="eyebrow">FIND YOUR PLACE</span><h2 id="emirate-browse-title">Explore listings across the UAE</h2></div></div>
-        <ul className="home-emirate-grid">{EMIRATES.map(emirate => <li key={emirate}><Link href={browseHref('/', '', emirate) + '#browse'} className="home-emirate-card"><MapPin size={22} aria-hidden="true"/><span>{emirate}</span><ArrowUpRight size={17} aria-hidden="true"/></Link></li>)}</ul>
+        <ul className="home-emirate-grid">{EMIRATES.map(emirate => <li key={emirate}><Link href={browseHref('/', '', emirate) + '#browse'} className="home-emirate-card"><img src={`/images/emirates/${EMIRATE_PHOTOS[emirate]}.webp`} alt="" width={800} height={500} loading="lazy" decoding="async"/><span className="emirate-name">{emirate}</span><span className="emirate-arrow" aria-hidden="true"><ArrowUpRight size={17}/></span></Link></li>)}</ul>
     </section>;
 }
 
