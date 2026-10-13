@@ -1,4 +1,4 @@
-import { EMIRATES } from './catalog.ts';
+import { EMIRATES, TYPES } from './catalog.ts';
 
 export const BROWSE_CATEGORIES = [
     { id: 'property-sale', label: 'Commercial Property for Sale', locationLabel: 'Commercial Properties for Sale', path: '/properties', intent: 'sale' },
@@ -11,6 +11,49 @@ export function browseHref(path: string, intent = '', emirate = '') {
     if (intent) params.set('intent', intent);
     if (emirate) params.set('emirate', emirate);
     return `${path}${params.size ? `?${params}` : ''}`;
+}
+
+export type MarketplaceFilters = {
+    query: string;
+    tab: string;
+    emirate: string;
+    type: string;
+    intent: string;
+    max: string;
+    sort: string;
+};
+
+export const DEFAULT_MARKETPLACE_FILTERS: MarketplaceFilters = {
+    query: '', tab: 'all', emirate: '', type: '', intent: '', max: '', sort: 'newest',
+};
+
+export function readMarketplaceFilters(params: URLSearchParams, category?: 'property' | 'vehicle'): MarketplaceFilters {
+    const selected = params.get('category');
+    const tab = category || (selected === 'property' || selected === 'vehicle' ? selected : 'all');
+    const type = params.get('type') || '';
+    const types = tab === 'all' ? [...TYPES.property, ...TYPES.vehicle] : TYPES[tab as 'property' | 'vehicle'];
+    const max = params.get('max') || '';
+    const sort = params.get('sort');
+    return {
+        ...readBrowseFilters(params), tab,
+        type: types.includes(type) ? type : '',
+        max: max.trim() && Number.isFinite(Number(max)) && Number(max) >= 0 ? max : '',
+        sort: sort === 'low' || sort === 'high' ? sort : 'newest',
+    };
+}
+
+// Only replace marketplace-owned parameters; keep campaign parameters and anchors.
+export function marketplaceFilterHref(href: string, change: Partial<MarketplaceFilters>, category?: 'property' | 'vehicle') {
+    const url = new URL(href, 'https://www.poomasbuyandsell.com');
+    const next = { ...readMarketplaceFilters(url.searchParams, category), ...change };
+    const keys = { query: 'q', tab: 'category', emirate: 'emirate', type: 'type', intent: 'intent', max: 'max', sort: 'sort' } as const;
+    for (const key of Object.keys(keys) as (keyof MarketplaceFilters)[]) {
+        url.searchParams.delete(keys[key]);
+        if (next[key] !== DEFAULT_MARKETPLACE_FILTERS[key] && !(key === 'tab' && category)) {
+            url.searchParams.set(keys[key], next[key]);
+        }
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
 }
 
 export function readBrowseFilters(params: URLSearchParams) {
