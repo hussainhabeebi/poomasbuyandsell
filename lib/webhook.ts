@@ -13,15 +13,17 @@ export function verifyNomodSignature(raw: string, headers: {
         return false; const got = Buffer.from(s, 'base64'); return got.length === expected.length && timingSafeEqual(got, expected); });
 }
 export function nextPaymentState(type: string, current: string, matched: boolean) {
+    if (!matched)
+        return null;
     if (type === 'charge.completed')
         return matched && current === 'awaiting_payment' ? 'paid' : null;
-    if (!['awaiting_payment', 'paid', 'partially_refunded', 'disputed'].includes(current))
+    if (!['awaiting_payment', 'paid', 'partially_refunded', 'disputed', 'refunded'].includes(current))
         return null;
     if (type === 'charge.refunded')
-        return 'refunded';
+        return current === 'disputed' || current === 'refunded' ? null : 'refunded';
     if (type === 'charge.partially_refunded')
-        return 'partially_refunded';
+        return ['refunded', 'disputed', 'partially_refunded'].includes(current) ? null : 'partially_refunded';
     if (type === 'charge.dispute.created')
-        return 'disputed';
+        return current === 'disputed' ? null : 'disputed';
     return null;
 }
