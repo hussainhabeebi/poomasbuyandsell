@@ -21,6 +21,9 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
   name: "poomasbuyandsell",
+  vars: {
+    PAYMENT_RETURN_ORIGIN: "https://www.poomasbuyandsell.com",
+  },
   assets: { run_worker_first: ["/listing/*", "/guides/*"] },
   main: "./build/sites-worker.ts",
   compatibility_flags: ["nodejs_compat"],
