@@ -1,0 +1,4 @@
+.panel{border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:24px;margin:0 0 24px;min-width:0;overflow-wrap:anywhere}
+.panel h2{font-size:1.5rem;margin-bottom:16px}.panel h3{font-size:1.05rem;margin:18px 0 8px}.panel small{display:block;margin-top:12px;color:var(--muted)}
+.list{list-style:none;padding:0;margin:12px 0 24px;display:grid;gap:12px}.list li{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:white;border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}.list small{margin-top:0}.list label{width:100%;max-width:460px}.list input{width:100%;min-width:0}.panel button{white-space:normal;text-align:left;max-width:100%}.actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:18px 0}
+@media(max-width:650px){.panel{padding:18px}.list li{padding:14px}.panel h2{font-size:1.3rem}}

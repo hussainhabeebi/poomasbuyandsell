@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
+import { sellerPaymentStatus } from '../lib/payment-status.ts';
+import { paymentStatusCopy } from '../lib/payment-display.ts';
 import { createHmac, randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 import {
     createCheckout, receiveWebhook, reconcilePayment, processPending, paymentMinor,
-    paymentConfigured, NOMOD_RELEASE_APPROVED, PAYMENT_ORIGIN, type NomodContext,
+    paymentConfigured, NOMOD_RELEASE_APPROVED, PAYMENT_ORIGIN, recoveryOverview, VERIFICATION_LIMIT, VERIFICATION_COOLDOWN_MS, REPLAY_BATCH_SIZE, type NomodContext,
 } from '../lib/nomod.ts';
 
 const orderId = '11111111-1111-4111-8111-111111111111';
@@ -161,6 +163,8 @@ test('checkout stores exactly one server-priced link and an audit reservation', 
     const body = JSON.parse(String(f.calls[0].init!.body));
     assert.equal(body.items[0].amount, '100.00');
     assert.equal(body.payment_expiry_limit, 1);
+    assert.equal(body.success_url, `${PAYMENT_ORIGIN}/account?payment=returned&promotion=${orderId}`);
+    assert.equal(body.failure_url, `${PAYMENT_ORIGIN}/account?payment=failed&promotion=${orderId}`);
     assert.equal(body.allow_tip, false); assert.equal(body.allow_service_fee, false);
     assert.match(body.note, /^Poomas promotion .+ attempt .+$/);
     assert.equal(f.order().status, 'awaiting_payment'); assert.equal(f.order().nomod_id, linkId);
@@ -316,6 +320,9 @@ test('provider outage keeps durable event pending for authenticated reconciliati
     const f = fixture(); f.linked(); const e = event(f.note()); f.handler(async () => { throw new Error('outage'); });
     await receiveWebhook(f.c, signed(e)); assert.equal(f.event(e.eventId).outcome, 'pending_provider'); assert.equal(f.order().status, 'awaiting_payment');
     f.handler(async () => Response.json({ count: 1, next: null, results: [charge(f.note())] }));
+    const calls = f.calls.length;
+    await reconcilePayment(f.c, orderId, undefined, 'admin'); assert.equal(f.calls.length, calls); // Cooldown is enforced.
+    f.sqlite.exec("UPDATE nomod_audit SET created_at='2000-01-01T00:00:00.000Z' WHERE type='provider_verification'");
     await reconcilePayment(f.c, orderId, undefined, 'admin'); assert.equal(f.event(e.eventId).outcome, 'applied'); assert.equal(f.order().status, 'paid');
 });
 test('disabled release journals signed events without provider calls or promotion updates', async () => {
@@ -348,6 +355,7 @@ test('race between completion and refund retains pending state for replay', asyn
     });
     const refund = event(f.note(), 'charge.refunded'); await receiveWebhook(f.c, signed(refund));
     assert.equal(f.order().status, 'paid'); assert.equal(f.event(refund.eventId).outcome, 'pending_provider');
+    f.sqlite.exec("UPDATE nomod_audit SET created_at='2000-01-01T00:00:00.000Z' WHERE type='provider_verification'");
     await processPending(f.c, orderId); assert.equal(f.order().status, 'refunded'); assert.equal(f.event(refund.eventId).outcome, 'applied');
 });
 
@@ -368,7 +376,7 @@ const serverUrl = compiled('lib/server.ts', {
 const nomodUrl = pathToFileURL(new URL('../lib/nomod.ts', import.meta.url).pathname).href;
 const contextUrl = compiled('lib/nomod-server.ts', { '@/lib/server': serverUrl, './nomod.ts': nomodUrl });
 async function route(path: string) {
-    return import(compiled(path, { '@/lib/server': serverUrl, '@/lib/nomod': nomodUrl, '@/lib/nomod-server': contextUrl }));
+    return import(compiled(path, { '@/lib/server': serverUrl, '@/lib/nomod': nomodUrl, '@/lib/nomod-server': contextUrl, '@/lib/payment-status': new URL('../lib/payment-status.ts', import.meta.url).href }));
 }
 function apiRequest(path: string, body = { id: orderId }, origin = PAYMENT_ORIGIN) {
     return new Request(PAYMENT_ORIGIN + path, { method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -400,4 +408,135 @@ test('actual webhook route durably journals while release-locked and never calls
         assert.equal(f.event(e.eventId).outcome, 'pending_activation');
         assert.equal(f.order().status, 'awaiting_payment'); assert.equal(fetches, 0);
     } finally { globalThis.fetch = originalFetch; }
+});
+
+test('seller payment status is ownership-scoped, read-only and never trusts return hints', async () => {
+    const f = fixture();
+    assert.equal(await sellerPaymentStatus(f.c.db, orderId, 'other-seller'), null);
+    assert.equal(await sellerPaymentStatus(f.c.db, 'bad-id', 'seller'), null);
+    const initial = await sellerPaymentStatus(f.c.db, orderId, 'seller');
+    assert.equal(initial?.status, 'quoted'); assert.equal(initial?.verified, false);
+    assert.deepEqual(Object.keys(initial!).sort(), ['amount', 'currency', 'id', 'lastAttempt', 'packageId', 'status', 'title', 'verified'].sort());
+    f.linked(); await receiveWebhook(f.c, signed(event(f.note())));
+    const paid = await sellerPaymentStatus(f.c.db, orderId, 'seller');
+    assert.equal(paid?.status, 'paid'); assert.equal(paid?.verified, true);
+    assert.equal(f.calls.filter(x => x.init?.method === 'POST').length, 0);
+});
+test('seller status distinguishes verified failed/cancelled attempts from paid fulfillment', async () => {
+    const f = fixture(); f.linked();
+    await receiveWebhook(f.c, signed(event(f.note(), 'charge.failed', { status: 'failed' })));
+    const failed = await sellerPaymentStatus(f.c.db, orderId, 'seller');
+    assert.equal(failed?.lastAttempt, 'attempt_failed'); assert.equal(failed?.verified, false);
+    assert.equal(paymentStatusCopy(failed!.status, false, failed!.lastAttempt).title, 'Payment attempt failed');
+    await receiveWebhook(f.c, signed(event(f.note())));
+    assert.equal(paymentStatusCopy('paid', true, 'attempt_failed').title, 'Payment verified');
+    assert.match(paymentStatusCopy('paid', true).message, /delivery and scheduling.*separately/);
+    assert.equal(paymentStatusCopy('paid', false).title, 'Payment needs review');
+    for (const status of ['refunded', 'disputed', 'partially_refunded']) assert.equal(paymentStatusCopy(status, true).pending, false);
+});
+test('provider retry budget persists across contexts and repeated deliveries cannot bypass cooldown', async () => {
+    const f = fixture(); f.linked(); const e = event(f.note());
+    f.handler(async () => { throw new Error('outage'); });
+    await receiveWebhook(f.c, signed(e));
+    const calls = f.calls.length;
+    await Promise.all([receiveWebhook(f.c, signed(e)), processPending(f.c, orderId)]);
+    assert.equal(f.calls.length, calls);
+    for (let i = 1; i < VERIFICATION_LIMIT; i++) {
+        f.sqlite.exec("UPDATE nomod_audit SET created_at='2000-01-01T00:00:00.000Z' WHERE type='provider_verification'");
+        await processPending({ ...f.c }, orderId);
+    }
+    f.sqlite.exec("UPDATE nomod_audit SET created_at='2000-01-01T00:00:00.000Z' WHERE type='provider_verification'");
+    await receiveWebhook(f.c, signed(e)); await reconcilePayment(f.c, orderId, undefined, 'admin');
+    assert.equal(f.calls.length, VERIFICATION_LIMIT);
+    assert.equal(f.event(e.eventId).outcome, 'pending_provider'); assert.equal(f.order().status, 'awaiting_payment');
+    const overview = await recoveryOverview(f.c);
+    assert.equal(overview.events[0].attempts, VERIFICATION_LIMIT);
+    assert.equal(overview.events[0].id, e.eventId);
+});
+test('concurrent pending replays reserve one provider verification and one settlement', async () => {
+    const f = fixture(); f.linked(); f.c.enabled = false;
+    const e = event(f.note()); await receiveWebhook(f.c, signed(e)); f.c.enabled = true;
+    await Promise.all([processPending(f.c, orderId), processPending(f.c, orderId)]);
+    assert.equal(f.calls.length, 1); assert.equal(f.order().status, 'paid');
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM nomod_payments').get()!.n, 1);
+});
+test('replay batch is bounded and cooling-down events do not starve eligible events', async () => {
+    const f = fixture(); f.linked(); f.c.enabled = false;
+    for (let i = 0; i < REPLAY_BATCH_SIZE + 2; i++) await receiveWebhook(f.c, signed(event(f.note(), 'charge.failed', { status: 'failed' })));
+    f.c.enabled = true; f.handler(async () => { throw new Error('outage'); });
+    await processPending(f.c, orderId); assert.equal(f.calls.length, REPLAY_BATCH_SIZE);
+    await processPending(f.c, orderId); assert.equal(f.calls.length, REPLAY_BATCH_SIZE + 2);
+    assert.equal(f.order().status, 'awaiting_payment');
+});
+test('disabled recovery inspection does not spend retry budget, call provider or alter orders', async () => {
+    const f = fixture(); await createCheckout(f.c, orderId, 'seller'); f.c.enabled = false;
+    const e = event(f.note()); await receiveWebhook(f.c, signed(e)); const before = f.order(), calls = f.calls.length;
+    await processPending(f.c, orderId);
+    const overview = await recoveryOverview(f.c);
+    assert.equal(overview.enabled, false); assert.equal(overview.events[0].attempts, 0);
+    assert.equal(overview.events[0].outcome, 'pending_activation');
+    assert.deepEqual(f.order(), before); assert.equal(f.calls.length, calls);
+    assert.doesNotMatch(JSON.stringify(overview), /apiKey|webhookSecret|payment_url|customer|card_number/);
+});
+test('recovery overview exposes ambiguous attempts and paginates without losing rows', async () => {
+    const f = fixture(); f.handler(async () => { throw new Error('timeout'); });
+    await assert.rejects(createCheckout(f.c, orderId, 'seller'));
+    const overview = await recoveryOverview(f.c);
+    assert.equal(overview.attempts[0].order_id, orderId); assert.equal(overview.attempts[0].state, 'ambiguous');
+    for (let i = 0; i < 52; i++) await receiveWebhook(f.c, signed(event(f.note())));
+    const first = await recoveryOverview(f.c), second = await recoveryOverview(f.c, 1);
+    assert.equal(first.events.length, 50); assert.equal(first.hasMore, true);
+    assert.equal(second.events.length, 2); assert.equal(second.hasMore, false);
+    assert.equal(new Set([...first.events, ...second.events].map(x => x.id)).size, 52);
+});
+test('read-only recovery GET enforces admin identity even while release-locked', async () => {
+    const f = fixture(); f.linked(); f.c.enabled = false;
+    await receiveWebhook(f.c, signed(event(f.note())));
+    Object.assign(routeState.env, { DB: f.c.db, ADMIN_EMAILS: 'admin@example.test' });
+    const reconcile = await route('app/api/nomod/reconcile/route.ts');
+    const request = new Request(PAYMENT_ORIGIN + '/api/nomod/reconcile');
+    routeState.user = null; assert.equal((await reconcile.GET(request)).status, 401);
+    routeState.user = { userId: 'seller', email: 'seller@example.test' }; assert.equal((await reconcile.GET(request)).status, 403);
+    routeState.user = { userId: 'admin', email: 'admin@example.test' };
+    const response = await reconcile.GET(request); assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    const data = await response.json(); assert.equal(data.enabled, false); assert.equal(data.events.length, 1);
+    assert.equal((await reconcile.GET(new Request(PAYMENT_ORIGIN + '/api/nomod/reconcile?page=-1'))).status, 400);
+    assert.equal(f.calls.length, 0);
+});
+test('actual seller status endpoint rejects unauthenticated and cross-account access', async () => {
+    const f = fixture(); Object.assign(routeState.env, { DB: f.c.db });
+    const status = await route('app/api/promotions/payment-status/route.ts');
+    const request = new Request(PAYMENT_ORIGIN + '/api/promotions/payment-status?id=' + orderId + '&payment=success');
+    routeState.user = null; assert.equal((await status.GET(request)).status, 401);
+    routeState.user = { userId: 'other', email: 'other@example.test' }; assert.equal((await status.GET(request)).status, 404);
+    routeState.user = { userId: 'seller', email: 'seller@example.test' };
+    const response = await status.GET(request); assert.equal(response.status, 200);
+    assert.equal((await response.json()).status, 'quoted'); assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    assert.equal(f.calls.length, 0); assert.equal(f.order().status, 'quoted');
+});
+test('early-event backlog beyond one batch remains replayable after the link is stored', async () => {
+    const f = fixture();
+    for (let i = 0; i < REPLAY_BATCH_SIZE + 1; i++) await receiveWebhook(f.c, signed(event(f.note(), 'charge.failed', { status: 'failed' })));
+    assert.equal(f.calls.length, 0);
+    f.linked();
+    await processPending(f.c, orderId);
+    const overview = await recoveryOverview(f.c);
+    assert.equal(overview.events.length, 1);
+    assert.equal(overview.events[0].outcome, 'pending_link');
+    assert.equal(overview.events[0].stored_link_id, linkId);
+    await processPending(f.c, orderId);
+    assert.equal((await recoveryOverview(f.c)).events.length, 0);
+    assert.equal(f.order().status, 'awaiting_payment');
+});
+test('recovery limits are five checks, sixty seconds and ten events with cooldown enforced around its boundary', async () => {
+    assert.equal(VERIFICATION_LIMIT, 5); assert.equal(VERIFICATION_COOLDOWN_MS, 60000); assert.equal(REPLAY_BATCH_SIZE, 10);
+    const f = fixture(); f.linked(); const e = event(f.note());
+    f.handler(async () => { throw new Error('outage'); });
+    await receiveWebhook(f.c, signed(e)); assert.equal(f.calls.length, 1);
+    f.sqlite.prepare("UPDATE nomod_audit SET created_at=? WHERE type='provider_verification'").run(new Date(Date.now() - 59000).toISOString());
+    await processPending(f.c, orderId); assert.equal(f.calls.length, 1);
+    f.sqlite.prepare("UPDATE nomod_audit SET created_at=? WHERE type='provider_verification'").run(new Date(Date.now() - 61000).toISOString());
+    await processPending(f.c, orderId); assert.equal(f.calls.length, 2);
+    assert.equal(f.order().status, 'awaiting_payment');
 });

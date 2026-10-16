@@ -9,6 +9,9 @@ const API = 'https://api.nomod.com/v1';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TYPES = new Set(['charge.created', 'charge.authorised', 'charge.completed', 'charge.failed', 'charge.cancelled', 'charge.refunded', 'charge.partially_refunded', 'charge.dispute.created']);
 const PENDING = "('received','pending_link','pending_provider','pending_activation')";
+export const VERIFICATION_LIMIT = 5;
+export const VERIFICATION_COOLDOWN_MS = 60000;
+export const REPLAY_BATCH_SIZE = 10;
 
 export class PaymentError extends Error {
     status: number;
@@ -147,7 +150,7 @@ export async function createCheckout(c: NomodContext, orderId: string, sellerId:
         const data = await provider(c, '/links', { method: 'POST', body: JSON.stringify({
             currency: order.currency, items: [{ name: PACKAGES.find(p => p.id === order.package_id)?.name || 'Poomas promotion', amount: (paymentMinor(order.amount)! / 100).toFixed(2), quantity: 1 }],
             title: 'Poomas Buy & Sell Promotion', note,
-            success_url: `${PAYMENT_ORIGIN}/account?payment=returned`, failure_url: `${PAYMENT_ORIGIN}/account?payment=failed`,
+            success_url: `${PAYMENT_ORIGIN}/account?payment=returned&promotion=${order.id}`, failure_url: `${PAYMENT_ORIGIN}/account?payment=failed&promotion=${order.id}`,
             discount_percentage: 0, shipping_address_required: false, allow_tip: false, allow_tabby: false, allow_tamara: false, allow_service_fee: false, payment_expiry_limit: 1,
         }) });
         const link = safeLink(data, order, note);
@@ -219,6 +222,18 @@ export async function processEvent(c: NomodContext, id: string) {
     }
     if (!order.nomod_id) { await eventOutcome(c, id, 'pending_link'); return; }
     if (!paymentConfigured(c)) { await eventOutcome(c, id, 'pending_activation', order.nomod_id); return; }
+    // Persist a bounded reservation BEFORE each provider lookup. A crash still
+    // consumes an attempt. One atomic statement prevents concurrent deliveries
+    // or operators from exceeding the budget/cooldown. Never clear this history.
+    const now = new Date().toISOString();
+    const reservation = await c.db.prepare(`INSERT INTO nomod_audit (id,order_id,type,outcome,link_id,created_at)
+        SELECT ?,?,'provider_verification',?,?,? WHERE
+        (SELECT COUNT(*) FROM nomod_audit WHERE order_id=? AND type='provider_verification' AND outcome=?) < ?
+        AND NOT EXISTS (SELECT 1 FROM nomod_audit WHERE order_id=? AND type='provider_verification' AND outcome=? AND created_at>?)
+        AND EXISTS (SELECT 1 FROM nomod_events WHERE id=? AND outcome IN ${PENDING})`)
+        .bind(crypto.randomUUID(), order.id, id, order.nomod_id, now, order.id, id, VERIFICATION_LIMIT,
+            order.id, id, new Date(Date.now() - VERIFICATION_COOLDOWN_MS).toISOString(), id).run();
+    if (!reservation.meta.changes) return; // Durable pending state remains visible to operators.
     // Nomod does NOT document linkId in webhook data. The documented server API
     // filters charges by both charge UUID and link_id. Never trust note alone.
     let charges: RecordValue;
@@ -238,7 +253,6 @@ export async function processEvent(c: NomodContext, id: string) {
     }
     const next = nextPaymentState(e.type, order.status, true);
     if (!next) { await eventOutcome(c, id, 'no_transition', order.nomod_id); return; }
-    const now = new Date().toISOString();
     await c.db.batch([
         c.db.prepare(`INSERT OR IGNORE INTO nomod_payments (order_id,charge_id,link_id,created_at) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM promotions WHERE id=? AND status=?) AND EXISTS (SELECT 1 FROM nomod_events WHERE id=? AND outcome IN ${PENDING})`)
             .bind(order.id, e.charge_id, order.nomod_id, now, order.id, order.status, id),
@@ -249,7 +263,12 @@ export async function processEvent(c: NomodContext, id: string) {
     ]);
 }
 export async function processPending(c: NomodContext, orderId: string) {
-    const events = await c.db.prepare(`SELECT id FROM nomod_events WHERE order_id=? AND outcome IN ${PENDING} ORDER BY received_at,id LIMIT 100`).bind(orderId).all<{ id: string }>();
+    // Exclude cooling-down/exhausted events so they cannot starve later events.
+    const events = await c.db.prepare(`SELECT e.id FROM nomod_events e WHERE e.order_id=? AND e.outcome IN ${PENDING}
+        AND (SELECT COUNT(*) FROM nomod_audit a WHERE a.order_id=e.order_id AND a.type='provider_verification' AND a.outcome=e.id) < ?
+        AND NOT EXISTS (SELECT 1 FROM nomod_audit a WHERE a.order_id=e.order_id AND a.type='provider_verification' AND a.outcome=e.id AND a.created_at>?)
+        ORDER BY e.received_at,e.id LIMIT ?`)
+        .bind(orderId, VERIFICATION_LIMIT, new Date(Date.now() - VERIFICATION_COOLDOWN_MS).toISOString(), REPLAY_BATCH_SIZE).all<{ id: string }>();
     for (const e of events.results) await processEvent(c, e.id);
 }
 // Caller must authenticate and authorise an administrator. Recovery can adopt
@@ -279,5 +298,25 @@ export async function reconcilePayment(c: NomodContext, orderId: string, linkId:
         await audit(c, orderId, 'reconciliation', 'rejected_or_unavailable', order.nomod_id || linkId || null, actor).run();
         throw error;
     }
-    return { ok: true, message: 'Existing link and pending events checked. No new payment link was created.' };
+    return { ok: true, message: 'Recovery pass finished. Check event outcomes; cooling-down or exhausted events remain pending. No new payment link was created.' };
+}
+
+// Read-only operator view. Only call after administrator authorization. No raw
+// payloads, customer information, credentials or payment URLs are returned.
+export async function recoveryOverview(c: NomodContext, page = 0) {
+    await requirePaymentSchema(c);
+    const events = await c.db.prepare(`SELECT e.id,e.order_id,e.type,e.outcome,e.received_at,e.processed_at,e.link_id,
+        p.status AS order_status,p.nomod_id AS stored_link_id,p.package_id,l.title,
+        (SELECT COUNT(*) FROM nomod_audit a WHERE a.order_id=e.order_id AND a.type='provider_verification' AND a.outcome=e.id) AS attempts,
+        (SELECT MAX(created_at) FROM nomod_audit a WHERE a.order_id=e.order_id AND a.type='provider_verification' AND a.outcome=e.id) AS last_attempt_at
+        FROM nomod_events e LEFT JOIN promotions p ON p.id=e.order_id LEFT JOIN listings l ON l.id=p.listing_id
+        WHERE e.outcome IN ${PENDING} OR e.outcome LIKE 'rejected_%'
+        ORDER BY e.received_at,e.id LIMIT 51 OFFSET ?`).bind(page * 50).all();
+    const attempts = await c.db.prepare(`SELECT p.id AS order_id,p.status,p.package_id,l.title,a.id AS attempt_id,a.state,a.updated_at
+        FROM nomod_attempts a JOIN promotions p ON p.id=a.order_id JOIN listings l ON l.id=p.listing_id
+        WHERE p.nomod_id IS NULL AND a.state IN ('sending','ambiguous') ORDER BY a.created_at,a.id LIMIT 51 OFFSET ?`)
+        .bind(page * 50).all();
+    return { enabled: paymentConfigured(c), verificationLimit: VERIFICATION_LIMIT, cooldownMs: VERIFICATION_COOLDOWN_MS,
+        batchSize: REPLAY_BATCH_SIZE, events: events.results.slice(0, 50), attempts: attempts.results.slice(0, 50),
+        hasMore: events.results.length > 50 || attempts.results.length > 50, page };
 }
