@@ -27,6 +27,14 @@ export const DEFAULT_MARKETPLACE_FILTERS: MarketplaceFilters = {
     query: '', tab: 'all', emirate: '', type: '', intent: '', max: '', sort: 'newest',
 };
 
+export function marketplacePurposes(tab: string) {
+    return [
+        { value: '', label: tab === 'vehicle' ? 'All vehicle sales' : 'Sale & rent' },
+        { value: 'sale', label: 'For sale' },
+        ...(tab === 'vehicle' ? [] : [{ value: 'rent', label: 'For rent' }]),
+    ];
+}
+
 export function readMarketplaceFilters(params: URLSearchParams, category?: 'property' | 'vehicle'): MarketplaceFilters {
     const selected = params.get('category');
     const tab = category || (selected === 'property' || selected === 'vehicle' ? selected : 'all');
@@ -34,8 +42,10 @@ export function readMarketplaceFilters(params: URLSearchParams, category?: 'prop
     const types = tab === 'all' ? [...TYPES.property, ...TYPES.vehicle] : TYPES[tab as 'property' | 'vehicle'];
     const max = params.get('max') || '';
     const sort = params.get('sort');
+    const browse = readBrowseFilters(params);
     return {
-        ...readBrowseFilters(params), tab,
+        ...browse, tab,
+        intent: tab === 'vehicle' && browse.intent === 'rent' ? '' : browse.intent,
         type: types.includes(type) ? type : '',
         max: max.trim() && Number.isFinite(Number(max)) && Number(max) >= 0 ? max : '',
         sort: sort === 'low' || sort === 'high' ? sort : 'newest',
@@ -46,6 +56,7 @@ export function readMarketplaceFilters(params: URLSearchParams, category?: 'prop
 export function marketplaceFilterHref(href: string, change: Partial<MarketplaceFilters>, category?: 'property' | 'vehicle') {
     const url = new URL(href, 'https://www.poomasbuyandsell.com');
     const next = { ...readMarketplaceFilters(url.searchParams, category), ...change };
+    if ((category || next.tab) === 'vehicle' && next.intent === 'rent') next.intent = '';
     const keys = { query: 'q', tab: 'category', emirate: 'emirate', type: 'type', intent: 'intent', max: 'max', sort: 'sort' } as const;
     for (const key of Object.keys(keys) as (keyof MarketplaceFilters)[]) {
         url.searchParams.delete(keys[key]);

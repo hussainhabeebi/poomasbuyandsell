@@ -27,6 +27,8 @@ export type Listing = {
     seller_email?: string;
 };
 export function money(n: number) { return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', maximumFractionDigits: 0 }).format(n); }
+// Listing presentation only: promotion quotes retain the existing money() formatter.
+export function listingMoney(n: number) { return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 export function decodeListing(row: Record<string, unknown>): Listing { return { ...row, specs: JSON.parse(String(row.specs || '{}')), images: JSON.parse(String(row.images || '[]')) } as Listing; }
 export function publicListing(l: Listing): Listing { const { owner_id, seller_email, phone, rejection_reason, ...safe } = l; void owner_id; void seller_email; void phone; void rejection_reason; return safe; }
 export const GUIDES = [

@@ -186,3 +186,26 @@ test('actual browse rendering preserves filtered results, empty results and dire
     html = renderToStaticMarkup(createElement(Browse, { listings, viewer: null, category: 'vehicle' }));
     assert.ok(html.includes('No listings match your search.'));
 });
+
+test('legacy vehicle rental URLs server-render supported sale results', async () => {
+    const { Browse } = await component('marketplace');
+    const navigation = await import(navigationUrl);
+    const fixture = { id: 'qa-suv', slug: 'qa-suv', category: 'vehicle', subtype: 'SUV', title: 'QA vehicle for sale', description: 'QA', emirate: 'Dubai', area: 'QA', price: 100.50, intent: 'sale', images: ['/qa.webp'], specs: {}, status: 'published' } as Listing;
+    for (const category of ['vehicle', undefined] as const) {
+        navigation.setHref(category ? '/vehicles?intent=rent' : '/marketplace?category=vehicle&intent=rent');
+        const html = renderToStaticMarkup(createElement(Browse, { listings: [fixture], viewer: null, category }));
+        assert.ok(html.includes('href="/listing/qa-suv"'));
+    }
+});
+
+test('listing cards and detail pricing preserve fractional AED amounts in real server rendering', async () => {
+    const { Card, DetailActions, SellForm } = await component('marketplace');
+    const fixture = { id: 'qa-suv', slug: 'qa-suv', category: 'vehicle', subtype: 'SUV', title: 'QA vehicle for sale', description: 'QA', emirate: 'Dubai', area: 'QA', price: 100.50, intent: 'sale', images: ['/qa.webp'], specs: {}, status: 'published', seller_name: 'QA' } as Listing;
+    for (const Component of [Card, DetailActions]) {
+        const html = renderToStaticMarkup(createElement(Component, { listing: fixture, viewer: null })).replaceAll('\u00a0', ' ');
+        assert.ok(html.includes('AED 100.50'));
+        assert.ok(!html.includes('AED 101'));
+    }
+    const form = renderToStaticMarkup(createElement(SellForm, { viewer: { name: 'QA', email: 'qa@example.test', admin: false } }));
+    assert.ok(form.includes('step="0.01"'));
+});

@@ -24,7 +24,7 @@ test('linked filters retain keyword search and reject unsupported location and p
     assert.deepEqual(readBrowseFilters(new URLSearchParams('emirate=Al+Ain&intent=holiday')), { query: '', emirate: '', intent: '' });
 });
 
-import { DEFAULT_MARKETPLACE_FILTERS, marketplaceFilterHref, readMarketplaceFilters } from '../lib/browsing.ts';
+import { DEFAULT_MARKETPLACE_FILTERS, marketplaceFilterHref, marketplacePurposes, readMarketplaceFilters } from '../lib/browsing.ts';
 
 test('multiple filters round-trip through the URL and preserve unrelated parameters and anchors', () => {
     const filters = { query: 'office & parking', tab: 'property', emirate: 'Abu Dhabi', type: 'Office', intent: 'rent', max: '100000', sort: 'low' };
@@ -70,4 +70,39 @@ test('invalid filter values cannot select unsupported categories, types, prices 
     assert.deepEqual(readMarketplaceFilters(new URLSearchParams('category=jobs&type=Room&emirate=Al+Ain&intent=holiday&max=-1&sort=random')), DEFAULT_MARKETPLACE_FILTERS);
     assert.equal(readMarketplaceFilters(new URLSearchParams('max=Infinity')).max, '');
     assert.equal(readMarketplaceFilters(new URLSearchParams('max=0')).max, '0');
+});
+
+test('switching property rent to vehicles removes rent from the URL and preserves other filters', () => {
+    const property = '/marketplace?category=property&intent=rent&type=Office&q=parking&emirate=Dubai&max=100000&sort=low&utm_source=qa#browse';
+    const vehicle = marketplaceFilterHref(property, { tab: 'vehicle', type: '' });
+    const url = new URL(vehicle, 'https://example.com');
+    assert.equal(url.searchParams.has('intent'), false);
+    assert.equal(readMarketplaceFilters(url.searchParams).tab, 'vehicle');
+    assert.equal(readMarketplaceFilters(url.searchParams).intent, '');
+    for (const key of ['q', 'emirate', 'max', 'sort', 'utm_source']) assert.equal(url.searchParams.get(key), new URL(property, 'https://example.com').searchParams.get(key));
+    assert.equal(url.hash, '#browse');
+    assert.equal(readMarketplaceFilters(new URL(property, 'https://example.com').searchParams).intent, 'rent', 'Back retains original property rent snapshot');
+    assert.equal(readMarketplaceFilters(url.searchParams).intent, '', 'Forward restores supported vehicle snapshot');
+});
+
+test('legacy vehicle rental URLs normalize consistently and reset remains scoped and idempotent', () => {
+    for (const [href, category] of [['/vehicles?intent=rent&emirate=Sharjah&utm_source=qa#browse', 'vehicle'], ['/marketplace?category=vehicle&intent=rent&emirate=Sharjah&utm_source=qa#browse', undefined]] as const) {
+        const url = new URL(href, 'https://example.com');
+        assert.equal(readMarketplaceFilters(url.searchParams, category).intent, '');
+        const normalized = marketplaceFilterHref(href, { intent: '' }, category);
+        assert.ok(!normalized.includes('intent='));
+        assert.ok(normalized.includes('emirate=Sharjah'));
+        assert.equal(marketplaceFilterHref(normalized, {}, category), normalized);
+        assert.equal(marketplaceFilterHref(href, DEFAULT_MARKETPLACE_FILTERS, category), `${url.pathname}?utm_source=qa#browse`);
+    }
+    assert.equal(readMarketplaceFilters(new URLSearchParams('intent=rent'), 'property').intent, 'rent');
+    assert.equal(readMarketplaceFilters(new URLSearchParams('intent=sale'), 'vehicle').intent, 'sale');
+    assert.ok(!marketplaceFilterHref('/vehicles', { intent: 'rent' }, 'vehicle').includes('intent='));
+});
+
+
+test('the purpose options used by the browser offer rentals only for supported property searches', () => {
+    assert.deepEqual(marketplacePurposes('vehicle').map(option => option.value), ['', 'sale']);
+    assert.ok(!marketplacePurposes('vehicle').some(option => /rent/i.test(option.label)));
+    for (const tab of ['all', 'property']) assert.deepEqual(marketplacePurposes(tab).map(option => option.value), ['', 'sale', 'rent']);
 });
