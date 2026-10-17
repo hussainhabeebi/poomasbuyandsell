@@ -57,6 +57,9 @@ export function marketplaceFilterHref(href: string, change: Partial<MarketplaceF
     const url = new URL(href, 'https://www.poomasbuyandsell.com');
     const next = { ...readMarketplaceFilters(url.searchParams, category), ...change };
     if ((category || next.tab) === 'vehicle' && next.intent === 'rent') next.intent = '';
+    const tab = category || next.tab;
+    const types = tab === 'all' ? [...TYPES.property, ...TYPES.vehicle] : TYPES[tab as 'property' | 'vehicle'];
+    if (!types.includes(next.type)) next.type = '';
     const keys = { query: 'q', tab: 'category', emirate: 'emirate', type: 'type', intent: 'intent', max: 'max', sort: 'sort' } as const;
     for (const key of Object.keys(keys) as (keyof MarketplaceFilters)[]) {
         url.searchParams.delete(keys[key]);
