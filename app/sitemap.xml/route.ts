@@ -2,7 +2,7 @@ import { database } from '@/lib/server';
 import { GUIDES, SITE_URL } from '@/lib/catalog';
 export const dynamic = 'force-dynamic';
 const escape = (x: string) => x.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-export async function GET() { const paths = ['', '/properties', '/vehicles', '/promote', '/sell', '/guides', '/safety', ...GUIDES.map(g => `/guides/${g.slug}`)]; let listingUrls = ''; try {
+export async function GET() { const paths = ['', '/marketplace', '/properties', '/vehicles', '/promote', '/sell', '/guides', '/safety', ...GUIDES.map(g => `/guides/${g.slug}`)]; let listingUrls = ''; try {
     const r = await database().prepare("SELECT slug,updated_at FROM listings WHERE status='published' ORDER BY updated_at DESC LIMIT 40000").all<{
         slug: string;
         updated_at: string;
