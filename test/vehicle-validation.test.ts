@@ -99,7 +99,7 @@ async function marketFixture() {
         return uri(code);
     }
     const server = compile('../lib/server.ts', { 'cloudflare:workers': envUrl, '@/app/auth': authUrl });
-    const market = await import(compile('../app/api/market/route.ts', { '@/lib/server': server, '@/lib/catalog': new URL('../lib/catalog.ts', import.meta.url).href, '@/lib/validation': new URL('../lib/validation.ts', import.meta.url).href }));
+    const market = await import(compile('../app/api/market/route.ts', { '@/lib/server': server, '@/lib/promotion-quote': new URL('../lib/promotion-quote.ts', import.meta.url).href, '@/lib/catalog': new URL('../lib/catalog.ts', import.meta.url).href, '@/lib/validation': new URL('../lib/validation.ts', import.meta.url).href }));
     const seller = { userId: 'qa-seller', email: 'seller@example.test', displayName: 'QA Seller' };
     const admin = { userId: 'qa-admin', email: 'admin@example.test', displayName: 'QA Admin' };
     sqlite.prepare('INSERT INTO media(id,owner_id,content_type,created_at) VALUES (?,?,?,?)').run(valid.images[0].split('/').pop()!, seller.userId, 'image/webp', '2026-01-01');

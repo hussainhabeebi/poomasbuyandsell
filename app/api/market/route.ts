@@ -1,6 +1,7 @@
 import { database, identity, isAdmin, sameOrigin, body, failure, HttpError, rateLimit } from '@/lib/server';
 import { decodeListing, publicListing, PACKAGES } from '@/lib/catalog';
 import { listingInput, enquiryInput } from '@/lib/validation';
+import { approvePromotionQuote } from '@/lib/promotion-quote';
 export async function GET(request: Request) { try {
     const url = new URL(request.url);
     const scope = url.searchParams.get('scope');
@@ -11,7 +12,9 @@ export async function GET(request: Request) { try {
             throw new HttpError('Administrator access required.', 403);
         const db = database();
         const listings = await db.prepare(admin ? 'SELECT * FROM listings ORDER BY created_at DESC LIMIT 200' : 'SELECT * FROM listings WHERE owner_id=? ORDER BY created_at DESC LIMIT 200').bind(...(admin ? [] : [user.userId])).all();
-        const promotions = await db.prepare(admin ? 'SELECT p.*,l.title FROM promotions p JOIN listings l ON l.id=p.listing_id ORDER BY p.created_at DESC LIMIT 200' : 'SELECT p.*,l.title FROM promotions p JOIN listings l ON l.id=p.listing_id WHERE p.owner_id=? ORDER BY p.created_at DESC LIMIT 200').bind(...(admin ? [] : [user.userId])).all();
+        const paymentsTable = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='nomod_payments'").first();
+        const verifiedPayment = paymentsTable ? 'EXISTS (SELECT 1 FROM nomod_payments n WHERE n.order_id=p.id AND n.link_id=p.nomod_id)' : '0';
+        const promotions = await db.prepare(admin ? `SELECT p.*,l.title,${verifiedPayment} AS verifiedPayment FROM promotions p JOIN listings l ON l.id=p.listing_id ORDER BY p.created_at DESC LIMIT 200` : `SELECT p.*,l.title,${verifiedPayment} AS verifiedPayment FROM promotions p JOIN listings l ON l.id=p.listing_id WHERE p.owner_id=? ORDER BY p.created_at DESC LIMIT 200`).bind(...(admin ? [] : [user.userId])).all();
         const enquiries = await db.prepare(admin ? 'SELECT e.*,l.title FROM enquiries e JOIN listings l ON l.id=e.listing_id ORDER BY e.created_at DESC LIMIT 200' : 'SELECT e.*,l.title FROM enquiries e JOIN listings l ON l.id=e.listing_id WHERE l.owner_id=? OR e.buyer_id=? ORDER BY e.created_at DESC LIMIT 200').bind(...(admin ? [] : [user.userId, user.userId])).all();
         const saves = await db.prepare('SELECT l.* FROM saved s JOIN listings l ON s.listing_id=l.id WHERE s.user_id=? AND l.status IN (\'published\',\'sold\') ORDER BY s.created_at DESC').bind(user.userId).all();
         return Response.json({ listings: listings.results.map(decodeListing), promotions: promotions.results, enquiries: enquiries.results, saved: saves.results.map(x => publicListing(decodeListing(x))), admin: isAdmin(user.email) }, { headers: { 'Cache-Control': 'private, no-store' } });
@@ -103,12 +106,8 @@ export async function POST(request: Request) { try {
         case 'quote': {
             if (!isAdmin(user.email))
                 throw new HttpError('Administrator access required.', 403);
-            const amount = Number(input.amount);
-            if (!Number.isFinite(amount) || amount <= 0 || amount > 100000 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001)
-                throw new HttpError('Enter a valid AED quote.');
-            const result = await db.prepare("UPDATE promotions SET amount=?,status='quoted' WHERE id=? AND status IN ('requested','quoted')").bind(amount, input.id).run();
-            if (!result.meta.changes)
-                throw new HttpError('This promotion cannot be quoted.');
+            const result = await approvePromotionQuote(db, input.id, input.amount, user.userId);
+            if (result !== 'approved') throw new HttpError(result === 'invalid' ? 'Enter a valid AED quote with at most two decimal places.' : 'This promotion cannot be quoted after checkout has started.');
             return Response.json({ ok: true });
         }
         default: throw new HttpError('Unknown action.');

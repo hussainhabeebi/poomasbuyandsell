@@ -24,7 +24,9 @@ async function moduleUrl(path: URL): Promise<string> {
     const names = [...compiled.matchAll(/(?:from|import) ['"]([^'"]+)['"]/g)].map(m => m[1]);
     for (const name of new Set(names)) {
         let resolved: string;
-        if (name.startsWith('@/components/') || name.startsWith('./')) {
+        if (name.endsWith('.module.css')) resolved = `data:text/javascript;base64,${Buffer.from('export default {}').toString('base64')}`;
+        else if (name.startsWith('../lib/')) resolved = new URL(name + '.ts', path).href;
+        else if (name.startsWith('@/components/') || name.startsWith('./')) {
             const local = name.startsWith('@/') ? new URL(`../${name.slice(2)}.tsx`, import.meta.url) : new URL(`${name}.tsx`, path);
             resolved = await moduleUrl(local);
         } else if (name === '@/lib/utils') resolved = await moduleUrl(new URL('../lib/utils.ts', import.meta.url));
