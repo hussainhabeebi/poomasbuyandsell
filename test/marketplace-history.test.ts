@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_MARKETPLACE_FILTERS, marketplaceFilterHref, marketplacePurposes, readMarketplaceFilters, type MarketplaceFilters } from '../lib/browsing.ts';
 import { marketplaceSearchSnapshot, subscribeMarketplaceUrl, writeMarketplaceHref } from '../lib/marketplace-url.ts';
+import { BUSINESS_TYPES } from '../lib/catalog.ts';
 import { legacyMarketplaceHref } from '../lib/location-navigation.ts';
 
 // A browser History/EventTarget fixture: writes do NOT emit popstate; traversal
@@ -154,4 +155,22 @@ test('category-specific route normalization never keeps an incompatible type', (
     const url = marketplaceFilterHref('/properties?type=SUV&intent=rent', DEFAULT_MARKETPLACE_FILTERS, 'property');
     assert.equal(url, '/properties');
     assert.equal(marketplaceFilterHref('/marketplace?category=property&type=Office', { tab: 'all' }).includes('type=Office'), true);
+});
+
+
+test('business filters survive location, Back/Forward, reset and refresh; vehicle switching clears only the incompatible subtype', () => {
+    for (const type of BUSINESS_TYPES) {
+        const f = browserFixture(marketplaceFilterHref('/marketplace?utm_source=qa', { tab: 'property', type, intent: 'sale' }));
+        synchronized(f, { tab: 'property', type, intent: 'sale', emirate: '' });
+        f.change({ emirate: 'Sharjah' });
+        f.traverse(-1); synchronized(f, { type, emirate: '' });
+        f.traverse(1); synchronized(f, { type, emirate: 'Sharjah' });
+        f.change({ tab: 'vehicle' }); synchronized(f, { tab: 'vehicle', type: '', intent: 'sale', emirate: 'Sharjah' });
+        f.traverse(-1); synchronized(f, { tab: 'property', type });
+        const refreshed = browserFixture(f.href);
+        assert.deepEqual(refreshed.visible, f.visible);
+        f.change(DEFAULT_MARKETPLACE_FILTERS); synchronized(f, DEFAULT_MARKETPLACE_FILTERS);
+        f.traverse(-1); synchronized(f, { tab: 'property', type, emirate: 'Sharjah' });
+        f.unsubscribe(); refreshed.unsubscribe();
+    }
 });

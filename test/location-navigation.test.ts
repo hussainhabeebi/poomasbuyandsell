@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { legacyMarketplaceHref } from '../lib/location-navigation.ts';
-import { EMIRATES, type Listing } from '../lib/catalog.ts';
+import { EMIRATES, BUSINESS_TYPES, TYPES, type Listing } from '../lib/catalog.ts';
 import { BROWSE_CATEGORIES, browseHref, DEFAULT_MARKETPLACE_FILTERS, marketplaceFilterHref, readMarketplaceFilters } from '../lib/browsing.ts';
 
 // Render the real welcome/cards/directory tree, including client components'
@@ -74,7 +74,7 @@ test('all seven marketplace locations survive filters, category navigation, rese
     }
 });
 
-test('welcome server HTML includes all seven local photographic destinations, All UAE and the original 21 SEO links', async () => {
+test('category-first welcome includes all seven text-only locations, All UAE and the original 21 SEO links', async () => {
     const { Welcome } = await component('welcome');
     const html = renderToStaticMarkup(createElement(Welcome));
     assert.ok(html.includes('href="/marketplace"'));
@@ -87,10 +87,14 @@ test('welcome server HTML includes all seven local photographic destinations, Al
             assert.ok(html.includes(`${category.locationLabel} in ${emirate}`));
         }
     }
-    const photos = [...html.matchAll(/src="(\/images\/emirates\/[^" ]+\.webp)"/g)];
-    assert.equal(photos.length, 7);
-    for (const photo of photos) await access(new URL(`../public${photo[1]}`, import.meta.url));
-    assert.equal((html.match(/alt=""/g) || []).length, 7);
+    assert.ok(!html.includes('/images/emirates/'), 'emirates have no photographs');
+    assert.ok(html.indexOf('Browse by Category') < html.indexOf('Have a location in mind?'));
+    assert.ok(html.indexOf('Shops &amp; businesses for sale') < html.indexOf('Have a location in mind?'));
+    assert.ok(!html.includes('Start with your emirate'));
+    for (const category of BROWSE_CATEGORIES) {
+        assert.ok(html.includes(`href="${browseHref(category.path, category.intent).replaceAll('&', '&amp;')}"`));
+    }
+    for (const type of BUSINESS_TYPES) assert.ok(html.includes(`href="${marketplaceFilterHref('/properties', { type, intent: 'sale' }, 'property').replaceAll('&', '&amp;')}"`));
     assert.equal((html.match(/class="location-panel"[^>]*hidden/g) || []).length, 0);
 });
 
@@ -210,4 +214,53 @@ test('listing cards and detail pricing preserve fractional AED amounts in real s
     }
     const form = renderToStaticMarkup(createElement(SellForm, { viewer: { name: 'QA', email: 'qa@example.test', admin: false } }));
     assert.ok(form.includes('step="0.01"'));
+});
+
+
+test('business shortcuts use supported commercial sale filters, preserve location and never invent a top-level category', async () => {
+    const { BusinessCategories } = await component('home-browsing');
+    for (const emirate of ['', ...EMIRATES]) {
+        const search = new URLSearchParams({ emirate, intent: 'rent', type: 'Office', utm_source: 'test' }).toString();
+        const html = renderToStaticMarkup(createElement(BusinessCategories, { search }));
+        assert.equal((html.match(/<a /g) || []).length, 6);
+        for (const type of BUSINESS_TYPES) {
+            const href = marketplaceFilterHref(`/properties?${search}`, { type, intent: 'sale' }, 'property');
+            assert.ok(html.includes(`href="${href.replaceAll('&', '&amp;')}"`));
+            assert.deepEqual(readMarketplaceFilters(new URL(href, 'https://example.test').searchParams, 'property'), { ...DEFAULT_MARKETPLACE_FILTERS, tab: 'property', intent: 'sale', type, emirate });
+            assert.ok(TYPES.property.includes(type));
+            assert.ok(!TYPES.vehicle.includes(type));
+        }
+    }
+});
+
+test('business destinations render matching listings across UAE, isolated by exact type and purpose', async () => {
+    const { Browse } = await component('marketplace');
+    const navigation = await import(navigationUrl);
+    const base = { category: 'property', title: 'Isolated business fixture', description: 'Isolated fixture', area: 'Test area', price: 100.50, intent: 'sale', images: ['/fixture.webp'], specs: {}, status: 'published' };
+    for (const type of BUSINESS_TYPES) {
+        const listings = [
+            { ...base, id: 'test-dubai', slug: 'test-dubai', subtype: type, emirate: 'Dubai' },
+            { ...base, id: 'test-sharjah', slug: 'test-sharjah', subtype: type, emirate: 'Sharjah' },
+            { ...base, id: 'test-office', slug: 'test-office', subtype: 'Office', emirate: 'Dubai' },
+            { ...base, id: 'test-rental', slug: 'test-rental', subtype: type, emirate: 'Dubai', intent: 'rent' },
+        ] as Listing[];
+        navigation.setHref(marketplaceFilterHref('/properties', { type, intent: 'sale' }, 'property'));
+        let html = renderToStaticMarkup(createElement(Browse, { listings, viewer: null, category: 'property' }));
+        assert.ok(html.includes('href="/listing/test-dubai"'));
+        assert.ok(html.includes('href="/listing/test-sharjah"'));
+        assert.ok(!html.includes('href="/listing/test-office"'));
+        assert.ok(!html.includes('href="/listing/test-rental"'));
+        assert.equal((html.match(/aria-current="page"/g) || []).length, 1, 'selected business type is visible');
+        navigation.setHref(marketplaceFilterHref('/properties', { type, intent: 'sale', emirate: 'Fujairah' }, 'property'));
+        html = renderToStaticMarkup(createElement(Browse, { listings, viewer: null, category: 'property' }));
+        assert.ok(html.includes('No listings match your search.'));
+    }
+});
+
+test('seller form exposes every approved business type through the existing type control', async () => {
+    const { SellForm } = await component('marketplace');
+    const viewer = { name: 'QA', email: 'qa@example.test', admin: false };
+    const form = renderToStaticMarkup(createElement(SellForm, { viewer }));
+    for (const type of BUSINESS_TYPES) assert.ok(form.includes(`<option>${type}</option>`));
+
 });

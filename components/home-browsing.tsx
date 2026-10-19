@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
-import { EMIRATES } from '@/lib/catalog';
-import { BROWSE_CATEGORIES, browseHref, marketplaceFilterHref } from '@/lib/browsing';
+import { ArrowUpRight, MapPin, ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt } from 'lucide-react';
+import { EMIRATES, BUSINESS_TYPES } from '@/lib/catalog';
+import { BROWSE_CATEGORIES, browseHref, marketplaceFilterHref, readMarketplaceFilters } from '@/lib/browsing';
 export { BrowseLocations } from './location-browse';
 
 const CATEGORY_PHOTOS = {
@@ -20,17 +20,25 @@ export function BrowseCategories({ emirate = '' }: { emirate?: string }) {
     </section>;
 }
 
-const EMIRATE_PHOTOS: Record<string, string> = {
-    Dubai: 'dubai', 'Abu Dhabi': 'abu-dhabi', Sharjah: 'sharjah', Ajman: 'ajman',
-    'Ras Al Khaimah': 'ras-al-khaimah', Fujairah: 'fujairah', 'Umm Al Quwain': 'umm-al-quwain',
-};
+const BUSINESS_ICONS = [ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt];
 
-// Shared, licensed local photography; meaningful link text makes these images decorative.
-export function EmirateCards({ welcome = false, search = '' }: { welcome?: boolean; search?: string }) {
-    return <ul className={welcome ? 'welcome-emirates' : 'home-emirate-grid'}>{EMIRATES.map((emirate, index) => <li key={emirate}>
-        <Link href={marketplaceFilterHref(`/marketplace${search ? `?${search}` : ''}`, { emirate })} className="home-emirate-card">
-            <img src={`/images/emirates/${EMIRATE_PHOTOS[emirate]}.webp`} alt="" width={800} height={500} loading={welcome && index < 2 ? 'eager' : 'lazy'} decoding="async"/>
-            <span className="emirate-name">{emirate}</span><span className="emirate-arrow" aria-hidden="true"><ArrowUpRight size={17}/></span>
+export function BusinessCategories({ search = '' }: { search?: string }) {
+    const selected = readMarketplaceFilters(new URLSearchParams(search), 'property');
+    return <section className="business-browse" aria-labelledby="business-browse-title">
+        <div className="business-heading"><h2 id="business-browse-title">Shops &amp; businesses for sale</h2><p>Explore by business type. Check each listing for what’s included.</p></div>
+        <ul className="business-links">{BUSINESS_TYPES.map((type, index) => {
+            const Icon = BUSINESS_ICONS[index];
+            const href = marketplaceFilterHref(`/properties${search ? `?${search}` : ''}`, { tab: 'property', type, intent: 'sale' }, 'property');
+            return <li key={type}><Link href={href} aria-current={selected.type === type && selected.intent === 'sale' ? 'page' : undefined}><Icon size={23} aria-hidden="true"/><span>{type}</span><ArrowUpRight size={17} aria-hidden="true"/></Link></li>;
+        })}</ul>
+    </section>;
+}
+
+// Location is optional navigation, not a photographic gate into the marketplace.
+export function EmirateCards({ search = '' }: { search?: string }) {
+    return <ul className="emirate-links">{EMIRATES.map(emirate => <li key={emirate}>
+        <Link href={marketplaceFilterHref(`/marketplace${search ? `?${search}` : ''}`, { emirate })}>
+            <MapPin size={16} aria-hidden="true"/><span>{emirate}</span><ArrowUpRight size={15} aria-hidden="true"/>
         </Link>
     </li>)}</ul>;
 }

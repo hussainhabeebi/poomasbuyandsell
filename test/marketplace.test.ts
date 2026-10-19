@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { listingInput, paymentMatches, safeVideo } from '../lib/validation.ts';
-import { publicListing, decodeListing } from '../lib/catalog.ts';
+import { publicListing, decodeListing, BUSINESS_TYPES, TYPES } from '../lib/catalog.ts';
 import { verifyNomodSignature, nextPaymentState } from '../lib/webhook.ts';
 const image = '/api/media/11111111-1111-4111-8111-111111111111';
 const valid = { title: 'Fitted office with parking', category: 'property', subtype: 'Office', emirate: 'Dubai', area: 'Business Bay', price: 100000, intent: 'rent', description: 'A fitted office. Ask the seller about parking, service charges and permitted use.', phone: '+971501234567', sellerName: 'Owner', specs: { Area: '1000' }, images: [image] };
@@ -24,3 +24,15 @@ test('Nomod authenticates raw payload and accepts key rotation signatures', () =
 test('tampered, stale, future or missing webhook headers are rejected', () => { assert.equal(verifyNomodSignature(raw + ' ', { id, timestamp, signature }, secret, now), false); assert.equal(verifyNomodSignature(raw, { id, timestamp, signature }, secret, now + 301000), false); assert.equal(verifyNomodSignature(raw, { id, timestamp, signature }, secret, now - 301000), false); assert.equal(verifyNomodSignature(raw, { id: null, timestamp, signature }, secret, now), false); });
 test('late completed events cannot resurrect refunded or disputed promotions', () => { assert.equal(nextPaymentState('charge.completed', 'awaiting_payment', true), 'paid'); assert.equal(nextPaymentState('charge.completed', 'awaiting_payment', false), null); for (const state of ['refunded', 'partially_refunded', 'disputed', 'paid', 'quoted'])
     assert.equal(nextPaymentState('charge.completed', state, true), null); assert.equal(nextPaymentState('charge.refunded', 'paid', false), null); assert.equal(nextPaymentState('charge.dispute.created', 'paid', false), null); });
+
+
+test('new business subtypes are accepted by the shared create/edit validation without invalidating legacy types', () => {
+    for (const subtype of TYPES.property) for (const intent of ['sale', 'rent']) {
+        assert.ok(listingInput.safeParse({ ...valid, subtype, intent }).success, `${subtype}: ${intent}`);
+    }
+    assert.equal(BUSINESS_TYPES.length, 6);
+    for (const subtype of BUSINESS_TYPES) {
+        assert.ok(!listingInput.safeParse({ ...valid, category: 'vehicle', subtype }).success);
+    }
+    for (const subtype of ['Made up category', 'Flat', 'Jobs']) assert.ok(!listingInput.safeParse({ ...valid, subtype }).success);
+});

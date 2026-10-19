@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { listingInput } from '../lib/validation.ts';
-import { decodeListing, listingMoney, money } from '../lib/catalog.ts';
+import { decodeListing, listingMoney, money, BUSINESS_TYPES } from '../lib/catalog.ts';
 import { vehicleMaxYear, VEHICLE_MAX_MILEAGE, vehicleSpecIssues } from '../lib/vehicle.ts';
 
 const valid = { title: 'QA vehicle validation fixture', category: 'vehicle', subtype: 'SUV', emirate: 'Dubai', area: 'Business Bay', price: 100.50, intent: 'sale', description: 'An isolated vehicle validation fixture, never submitted to production.', phone: '+971501234567', sellerName: 'QA Seller', images: ['/api/media/11111111-1111-4111-8111-111111111111'], specs: { Make: 'Toyota', Model: 'Land Cruiser', Year: '2021', Mileage: '165000' } };
@@ -154,8 +154,8 @@ test('existing legacy vehicle records remain public and unchanged until a valid 
     } finally { f.sqlite.close(); }
 });
 
-test('submission, edit, rejection and approval preserve property rent and exact listing amounts', async () => {
-    for (const data of [valid, { ...valid, category: 'property', subtype: 'Office', intent: 'rent', specs: { Area: '1000' } }]) {
+test('submission, edit, rejection and approval preserve property rent, business subtypes and exact listing amounts', async () => {
+    for (const data of [valid, { ...valid, category: 'property', subtype: 'Office', intent: 'rent', specs: { Area: '1000' } }, ...BUSINESS_TYPES.map(subtype => ({ ...valid, category: 'property', subtype, intent: 'sale', specs: { Area: '1000' } }))]) {
         const f = await marketFixture();
         try {
             const created = await f.post({ action: 'listing', data });
@@ -171,6 +171,7 @@ test('submission, edit, rejection and approval preserve property rent and exact 
             assert.equal(listing.price, 100.50);
             assert.equal(listing.intent, data.intent);
             assert.equal(listing.category, data.category);
+            assert.equal(listing.subtype, data.subtype);
             assert.equal(listing.emirate, 'Dubai');
         } finally { f.sqlite.close(); }
     }

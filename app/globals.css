@@ -226,3 +226,34 @@
 @media(max-width:768px){.welcome-intro{grid-template-columns:1fr;gap:0;margin-bottom:30px}.welcome-intro>.eyebrow{grid-column:auto}.welcome-intro h1{grid-row:auto}.welcome-intro>p{margin:20px 0}.welcome-emirates{grid-template-columns:repeat(2,minmax(0,1fr))}.welcome-emirates>li:first-child{grid-column:1/-1}.welcome-emirates>li:first-child .home-emirate-card{aspect-ratio:2.4}.welcome-location-heading>span{display:none}}
 @media(max-width:650px){.welcome-header .nav-wrap{padding:14px 16px;gap:10px}.welcome-header .brand{font-size:22px;gap:7px}.welcome-header .brand-mark{width:32px;height:35px;font-size:29px}.welcome-header .brand-sub{font-size:7px;letter-spacing:2.8px}.welcome-header .nav-actions{gap:12px}.welcome-header .sign-in{font-size:12px;white-space:nowrap}.welcome-header .nav-actions>.button{padding:9px 10px;min-height:44px;font-size:12px}.welcome-page{padding:34px 20px 30px}.welcome-intro h1{font-size:48px;letter-spacing:-2px}.welcome-intro>p{font-size:15px;line-height:1.7}.welcome-categories{font-size:11px;gap:12px}.welcome-location-heading h2{font-size:16px}.welcome-location-heading h2>svg{flex-shrink:0}.welcome-emirates{gap:12px}.welcome-emirates .home-emirate-card{min-height:132px;aspect-ratio:1.18;border-radius:12px}.welcome-emirates>li:first-child .home-emirate-card{aspect-ratio:2.1}.welcome-emirates .emirate-name{font-size:15px;left:12px;bottom:14px;right:38px}.welcome-emirates .emirate-arrow{right:9px}.welcome-all{margin-top:14px;padding:18px}.welcome-all>span{display:block}.welcome-all strong{display:block;margin-bottom:5px}.welcome-all>span>span{font-size:12px}.mobile-browse-location{display:flex;align-items:center;gap:14px;font-size:12px;font-weight:600;margin:0 0 12px}.mobile-browse-location>[data-slot="native-select-wrapper"]{flex:1;min-width:0}.mobile-browse-location [data-slot="native-select"]{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.welcome-all{transition:none}}
+
+/* Category-first arrival: inventory across the UAE, with optional text-only locations. */
+.category-welcome .welcome-intro{align-items:start;margin-bottom:32px}
+.category-welcome .welcome-intro h1{font-size:clamp(38px,4.4vw,62px)}
+.category-welcome .welcome-intro>p{margin-top:0}
+.category-welcome .welcome-browse-all{justify-self:start}
+.category-welcome .home-category-browse{padding-top:0}
+.category-welcome .business-browse{margin-top:36px}
+.business-browse{min-width:0;margin-bottom:24px}
+.business-heading{margin-bottom:18px}
+.business-heading h2{font-size:22px;line-height:1.3}
+.business-heading p{font-size:13px;margin:7px 0 0}
+.business-links{list-style:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding:0;margin:0}
+.business-links>li{min-width:0}
+.business-links a{display:flex;flex-direction:column;align-items:flex-start;gap:14px;position:relative;height:100%;min-height:130px;padding:20px 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--navy);transition:background .2s,border-color .2s}
+.business-links a>svg:first-child{color:currentColor}
+.business-links a>svg:last-child{position:absolute;right:12px;top:20px}
+.business-links a>span{font-size:14px;line-height:1.45;font-weight:600;overflow-wrap:anywhere}
+.business-links a:hover{background:#f0f5e5;border-color:#b8c899}
+.business-links a[aria-current="page"]{background:var(--navy);border-color:var(--navy);color:white}
+.browse .business-browse{margin:0 0 24px}
+.browse .business-heading h2{font-size:18px}
+.welcome-locations{margin-top:38px;border-top:1px solid var(--line);padding-top:28px}
+.emirate-links{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0}
+.emirate-links a{display:flex;align-items:center;gap:9px;min-height:46px;padding:11px 16px;border:1px solid var(--line);border-radius:999px;background:white;color:var(--navy);font-size:14px;line-height:1.4;transition:background .2s,border-color .2s}
+.emirate-links svg{flex-shrink:0}
+.emirate-links a:hover{background:#f0f5e5;border-color:#b8c899}
+@media(max-width:1024px){.business-links{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:768px){.category-welcome .welcome-intro>p{margin-top:20px}.category-welcome .welcome-browse-all{margin-top:0}}
+@media(max-width:650px){.business-links{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.business-links a{min-height:118px;padding:16px}.business-links a>svg:last-child{top:16px}.business-heading h2{font-size:21px}.category-welcome .welcome-intro h1{font-size:39px}.category-welcome .business-browse{margin-top:28px}.emirate-links{gap:8px}.emirate-links a{font-size:13px;padding:11px 13px}.welcome-locations{margin-top:28px}.welcome-location-heading h2{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.business-links a,.emirate-links a{transition:none}}

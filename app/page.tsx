@@ -13,7 +13,7 @@ function legacyDestination(search: Search) {
 export async function generateMetadata({ searchParams }: { searchParams: Promise<Search> }) {
     return legacyDestination(await searchParams)
         ? meta('UAE Commercial Properties & Vehicles', 'Browse commercial properties for sale and rent, and vehicles for sale across the UAE.', '/marketplace')
-        : meta('Choose Your Emirate', 'Choose your emirate to discover commercial properties and vehicles on Poomas Buy & Sell. Browse Dubai, Abu Dhabi and all seven UAE emirates.', '/');
+        : meta('Commercial Properties, Shops & Vehicles Across the UAE', 'Browse commercial properties for sale and rent, shops and businesses, and vehicles for sale across all UAE. Choose a category and filter by location.', '/');
 }
 export default async function Page({ searchParams }: { searchParams: Promise<Search> }) {
     // Legacy query searches remain usable even without JavaScript. The client
