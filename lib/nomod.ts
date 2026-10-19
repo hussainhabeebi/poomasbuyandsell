@@ -1,5 +1,6 @@
 import { nextPaymentState, verifyNomodSignature } from './webhook.ts';
 import { PACKAGES } from './catalog.ts';
+import { isWebsiteAdPackage, WEBSITE_AD_PACKAGE_ID } from './payment-policy.ts';
 
 // Deliberate release lock. Configuration alone must not activate this unverified
 // merchant integration. Removing it requires a separately reviewed activation.
@@ -122,6 +123,8 @@ export async function createCheckout(c: NomodContext, orderId: string, sellerId:
         .bind(orderId, sellerId).first<Order>();
     if (!order || !['quoted', 'awaiting_payment'].includes(order.status) || !matchingAmount(order.amount, order.currency, order))
         throw new PaymentError('Your promotion needs an approved quotation before payment.', 400);
+    if (!isWebsiteAdPackage(order.package_id))
+        throw new PaymentError('Online payments are available only for website ads. Contact the team about this service.', 400);
     if (order.listing_status !== 'published') throw new PaymentError('Your listing must be approved before payment.', 400);
     const previous = await c.db.prepare('SELECT * FROM nomod_attempts WHERE order_id=?').bind(order.id).first<Attempt>();
     if (order.nomod_id) {
@@ -139,8 +142,8 @@ export async function createCheckout(c: NomodContext, orderId: string, sellerId:
     // A permanent unique order_id reserves ONE provider creation attempt. Even
     // after timeout/crash, no automatic or manual reset can create another link.
     const results = await c.db.batch([
-        c.db.prepare("INSERT OR IGNORE INTO nomod_attempts (order_id,id,note,state,created_at,updated_at) SELECT p.id,?,?,'sending',?,? FROM promotions p JOIN listings l ON l.id=p.listing_id WHERE p.id=? AND p.status='quoted' AND p.nomod_id IS NULL AND p.amount=? AND p.currency=? AND p.owner_id=? AND l.status='published'")
-            .bind(id, note, now, now, order.id, order.amount, order.currency, sellerId),
+        c.db.prepare("INSERT OR IGNORE INTO nomod_attempts (order_id,id,note,state,created_at,updated_at) SELECT p.id,?,?,'sending',?,? FROM promotions p JOIN listings l ON l.id=p.listing_id WHERE p.id=? AND p.status='quoted' AND p.nomod_id IS NULL AND p.amount=? AND p.currency=? AND p.owner_id=? AND p.package_id=? AND l.status='published'")
+            .bind(id, note, now, now, order.id, order.amount, order.currency, sellerId, WEBSITE_AD_PACKAGE_ID),
         c.db.prepare("UPDATE promotions SET status='creating_payment' WHERE id=? AND status='quoted' AND EXISTS (SELECT 1 FROM nomod_attempts WHERE order_id=? AND id=?)")
             .bind(order.id, order.id, id),
     ]);

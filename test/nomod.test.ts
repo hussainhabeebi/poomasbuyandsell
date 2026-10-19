@@ -679,3 +679,106 @@ test('duplicate release-disabled deliveries preserve one durable pending outcome
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM nomod_audit WHERE type='webhook:charge.completed'").get()!.n, 1);
     assert.equal(f.calls.length, 0);
 });
+
+test('checkout rejects social, video and unknown packages before creating or reusing a provider link', async () => {
+    for (const packageId of ['story', 'reel', 'shoot', 'unknown', 'BOOST', 'boost ']) {
+        for (const linked of [false, true]) {
+            const f = fixture();
+            f.sqlite.prepare('UPDATE promotions SET package_id=?').run(packageId);
+            if (linked) f.linked();
+            const before = { ...f.order() };
+            await assert.rejects(createCheckout(f.c, orderId, 'seller'), /only for website ads/);
+            assert.deepEqual({ ...f.order() }, before);
+            assert.equal(f.calls.length, 0);
+            assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM nomod_attempts').get()!.n, 0);
+            assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM nomod_audit').get()!.n, 0);
+            f.sqlite.close();
+        }
+    }
+});
+
+test('checkout reservation rechecks website-ad eligibility atomically before any provider request', async () => {
+    const f = fixture(), batch = f.c.db.batch.bind(f.c.db);
+    let changed = false;
+    f.c.db.batch = async statements => {
+        if (!changed) { changed = true; f.sqlite.exec("UPDATE promotions SET package_id='reel'"); }
+        return batch(statements);
+    };
+    await assert.rejects(createCheckout(f.c, orderId, 'seller'), /already being prepared/);
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.order().status, 'quoted');
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM nomod_attempts').get()!.n, 0);
+    f.sqlite.close();
+});
+
+test('online quote approval refuses video/social requests without changing their stored quotation or audit history', async () => {
+    for (const packageId of ['story', 'reel', 'shoot', 'unknown']) {
+        const f = fixture();
+        f.sqlite.prepare('UPDATE promotions SET package_id=?').run(packageId);
+        const before = { ...f.order() };
+        assert.equal(await approvePromotionQuote(f.c.db, orderId, '137.65', 'admin'), 'unavailable');
+        assert.deepEqual({ ...f.order() }, before);
+        assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM nomod_audit').get()!.n, 0);
+        assert.equal(f.calls.length, 0);
+        f.sqlite.close();
+    }
+});
+
+test('seller service enquiries remain available while real admin API refuses payable quotes for video/social work', async () => {
+    const f = fixture(); Object.assign(routeState.env, { DB: f.c.db, ADMIN_EMAILS: 'admin@example.test' });
+    const market = await route('app/api/market/route.ts');
+    for (const packageId of ['story', 'reel', 'shoot']) {
+        routeState.user = { userId: 'seller', email: 'seller@example.test' };
+        const requested = await market.POST(apiRequest('/api/market', { action: 'promotion', listingId: 'listing', packageId, amount: 0.01 }));
+        assert.equal(requested.status, 201);
+        const { id } = await requested.json();
+        const before = f.sqlite.prepare('SELECT * FROM promotions WHERE id=?').get(id)!;
+        assert.equal(before.status, 'requested'); assert.equal(before.amount, null);
+        routeState.user = { userId: 'admin', email: 'admin@example.test' };
+        const response = await market.POST(apiRequest('/api/market', { action: 'quote', id, amount: '137.65' }));
+        assert.equal(response.status, 400);
+        assert.match((await response.json()).error, /Only website ads/);
+        assert.deepEqual(f.sqlite.prepare('SELECT * FROM promotions WHERE id=?').get(id), before);
+    }
+    assert.equal(f.calls.length, 0);
+    f.sqlite.close();
+});
+
+test('historic non-website payments keep verified completion, refund, dispute and duplicate protections', async () => {
+    for (const packageId of ['story', 'reel', 'shoot']) {
+        const f = fixture(); f.sqlite.prepare('UPDATE promotions SET package_id=?').run(packageId); f.linked();
+        const listing = f.sqlite.prepare('SELECT * FROM listings').get();
+        const completed = event(f.note());
+        await receiveWebhook(f.c, signed(completed)); await receiveWebhook(f.c, signed(completed));
+        assert.equal(f.order().status, 'paid');
+        const status = await sellerPaymentStatus(f.c.db, orderId, 'seller');
+        assert.equal(status!.verified, true); assert.equal(status!.packageId, packageId);
+        await receiveWebhook(f.c, signed(event(f.note(), 'charge.refunded')));
+        assert.equal(f.order().status, 'refunded');
+        await receiveWebhook(f.c, signed(event(f.note())));
+        assert.equal(f.order().status, 'refunded');
+        await receiveWebhook(f.c, signed(event(f.note(), 'charge.dispute.created')));
+        assert.equal(f.order().status, 'disputed');
+        assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM nomod_payments').get()!.n, 1);
+        assert.deepEqual(f.sqlite.prepare('SELECT * FROM listings').get(), listing);
+        assert.equal(f.calls.filter(c => c.init?.method === 'POST').length, 0);
+        f.sqlite.close();
+    }
+});
+
+test('historic non-website ambiguous checkout recovery adopts only the original link and never creates another', async () => {
+    const f = fixture();
+    f.handler(async (_url, init) => { f.setNote(JSON.parse(String(init!.body)).note); throw new Error('mock timeout'); });
+    await assert.rejects(createCheckout(f.c, orderId, 'seller'));
+    f.sqlite.exec("UPDATE promotions SET package_id='reel'");
+    f.handler(async url => {
+        assert.ok(url.endsWith('/links/' + linkId));
+        return Response.json(link(f.note()));
+    });
+    await reconcilePayment(f.c, orderId, linkId, 'admin');
+    assert.equal(f.order().nomod_id, linkId);
+    assert.equal(f.order().status, 'awaiting_payment');
+    await assert.rejects(createCheckout(f.c, orderId, 'seller'), /only for website ads/);
+    assert.equal(f.calls.filter(c => c.init?.method === 'POST').length, 1, 'only the original mocked attempt');
+    f.sqlite.close();
+});

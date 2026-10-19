@@ -107,7 +107,7 @@ export async function POST(request: Request) { try {
             if (!isAdmin(user.email))
                 throw new HttpError('Administrator access required.', 403);
             const result = await approvePromotionQuote(db, input.id, input.amount, user.userId);
-            if (result !== 'approved') throw new HttpError(result === 'invalid' ? 'Enter a valid AED quote with at most two decimal places.' : 'This promotion cannot be quoted after checkout has started.');
+            if (result !== 'approved') throw new HttpError(result === 'invalid' ? 'Enter a valid AED quote with at most two decimal places.' : 'Only website ads can receive an online-payment quote, and checkout must not have started.');
             return Response.json({ ok: true });
         }
         default: throw new HttpError('Unknown action.');
