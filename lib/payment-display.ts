@@ -17,8 +17,8 @@ export function paymentStatusCopy(status: string, verified: boolean, lastAttempt
         if (status === 'partially_refunded') return { title: 'Partial refund recorded', message: 'A partial refund has been recorded. The team will confirm the remaining service scope.', pending: false };
         return { title: 'Payment disputed', message: 'A payment dispute has been recorded. Contact the team before proceeding with the promotion.', pending: false };
     }
-    if (status === 'creating_payment') return { title: 'Payment setup needs verification', message: 'The team must verify the existing checkout attempt. Do not create another payment request.', pending: true };
-    if (lastAttempt === 'attempt_failed' || lastAttempt === 'attempt_cancelled') return { title: lastAttempt === 'attempt_failed' ? 'Payment attempt failed' : 'Payment attempt cancelled', message: 'No successful payment is confirmed. Review your promotion before retrying the existing checkout.', pending: true };
+    if (status === 'creating_payment') return { title: 'Payment setup needs verification', message: 'The team must verify the existing historical payment attempt. Contact the team on WhatsApp; do not make another payment while it is reviewed.', pending: true };
+    if (lastAttempt === 'attempt_failed' || lastAttempt === 'attempt_cancelled') return { title: lastAttempt === 'attempt_failed' ? 'Payment attempt failed' : 'Payment attempt cancelled', message: 'No successful payment is confirmed. Contact the team on WhatsApp to review this historical payment attempt and discuss your promotion. Online payments are disabled.', pending: true };
     if (status === 'awaiting_payment') return { title: 'Awaiting payment confirmation', message: 'A return from Nomod does not confirm payment. We are checking the status saved by verified payment notifications.', pending: true };
-    return { title: 'No verified payment recorded', message: 'Review your promotion quotation below. Returning to this page does not mark a promotion paid.', pending: false };
+    return { title: 'No verified payment recorded', message: 'Contact the team on WhatsApp to discuss your promotion and any direct payment arrangements. Returning to this page does not mark a promotion paid.', pending: false };
 }
