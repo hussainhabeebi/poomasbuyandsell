@@ -30,7 +30,9 @@ test('new business subtypes are accepted by the shared create/edit validation wi
     for (const subtype of TYPES.property) for (const intent of ['sale', 'rent']) {
         assert.ok(listingInput.safeParse({ ...valid, subtype, intent }).success, `${subtype}: ${intent}`);
     }
-    assert.equal(BUSINESS_TYPES.length, 6);
+    assert.equal(BUSINESS_TYPES.length, 13);
+    for (const type of ['Retail shop', 'Restaurant', 'Beauty parlour', 'Travels', 'Typing centre', 'Gym', 'Stationery shop']) assert.ok(BUSINESS_TYPES.includes(type));
+    assert.equal(new Set(TYPES.property).size, TYPES.property.length, 'Shared retail subtype must not be duplicated');
     for (const subtype of BUSINESS_TYPES) {
         assert.ok(!listingInput.safeParse({ ...valid, category: 'vehicle', subtype }).success);
     }
