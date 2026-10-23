@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, MapPin, ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt } from 'lucide-react';
+import { ArrowUpRight, MapPin, ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt, Store, Utensils, Sparkles, BriefcaseBusiness, FileText, Dumbbell, PencilRuler } from 'lucide-react';
 import { EMIRATES, BUSINESS_TYPES } from '@/lib/catalog';
 import { BROWSE_CATEGORIES, browseHref, marketplaceFilterHref, readMarketplaceFilters } from '@/lib/browsing';
 export { BrowseLocations } from './location-browse';
@@ -20,7 +20,7 @@ export function BrowseCategories({ emirate = '' }: { emirate?: string }) {
     </section>;
 }
 
-const BUSINESS_ICONS = [ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt];
+const BUSINESS_ICONS = [ShoppingBasket, Coffee, ShoppingCart, Scissors, Hammer, Shirt, Store, Utensils, Sparkles, BriefcaseBusiness, FileText, Dumbbell, PencilRuler];
 
 export function BusinessCategories({ search = '' }: { search?: string }) {
     const selected = readMarketplaceFilters(new URLSearchParams(search), 'property');
@@ -29,7 +29,7 @@ export function BusinessCategories({ search = '' }: { search?: string }) {
         <ul className="business-links">{BUSINESS_TYPES.map((type, index) => {
             const Icon = BUSINESS_ICONS[index];
             const href = marketplaceFilterHref(`/properties${search ? `?${search}` : ''}`, { tab: 'property', type, intent: 'sale' }, 'property');
-            return <li key={type}><Link href={href} aria-current={selected.type === type && selected.intent === 'sale' ? 'page' : undefined}><Icon size={23} aria-hidden="true"/><span>{type}</span><ArrowUpRight size={17} aria-hidden="true"/></Link></li>;
+            return <li key={type}><Link href={href} aria-current={selected.type === type && selected.intent === 'sale' ? 'page' : undefined}><Icon size={23} aria-hidden="true"/><span>{type === 'Retail shop' ? 'Shops' : type}</span><ArrowUpRight size={17} aria-hidden="true"/></Link></li>;
         })}</ul>
     </section>;
 }

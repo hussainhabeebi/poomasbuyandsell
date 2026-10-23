@@ -222,7 +222,8 @@ test('business shortcuts use supported commercial sale filters, preserve locatio
     for (const emirate of ['', ...EMIRATES]) {
         const search = new URLSearchParams({ emirate, intent: 'rent', type: 'Office', utm_source: 'test' }).toString();
         const html = renderToStaticMarkup(createElement(BusinessCategories, { search }));
-        assert.equal((html.match(/<a /g) || []).length, 6);
+        assert.equal((html.match(/<a /g) || []).length, BUSINESS_TYPES.length);
+        for (const label of ['Shops', 'Restaurant', 'Beauty parlour', 'Travels', 'Typing centre', 'Gym', 'Stationery shop']) assert.ok(html.includes(`<span>${label}</span>`));
         for (const type of BUSINESS_TYPES) {
             const href = marketplaceFilterHref(`/properties?${search}`, { type, intent: 'sale' }, 'property');
             assert.ok(html.includes(`href="${href.replaceAll('&', '&amp;')}"`));
