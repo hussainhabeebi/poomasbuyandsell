@@ -54,7 +54,7 @@ Ordinary filters and manual listing creation work without an AI key. AI requests
 
 ## Business-for-sale CRM (Phase 1)
 
-Staff-only CRM at `/admin/crm` for buyers (BUY-), sellers (SEL-) and business listings (LST-), with public enquiry forms at `/enquiry/buyer` and `/enquiry/seller` and approved listings at `/businesses-for-sale`. It is separate from the property/vehicle marketplace and uses additive migration `drizzle/0002_crm_phase1.sql`. Roles: `ADMIN_EMAILS` are administrators; other staff are added under CRM → Team. See [docs/crm-phase1.md](docs/crm-phase1.md) for permissions, staging, backup and migration instructions. **Do not apply the migration to production without approval.**
+Staff-only CRM at `/admin/crm` for buyers (BUY-), sellers (SEL-) and business listings (LST-), with public enquiry forms at `/enquiry/buyer` and `/enquiry/seller` and approved listings at `/businesses-for-sale`. It is separate from the property/vehicle marketplace and uses additive migration `drizzle/0002_crm_phase1.sql`. Roles: `ADMIN_EMAILS` are administrators; other staff are added under CRM → Team. See [docs/crm-phase1.md](docs/crm-phase1.md) for permissions, local testing, the production deployment checklist, exact backup and migration commands, and required configuration. **Do not apply the migration to production without approval.**
 
 ## Nomod integration
 
@@ -87,7 +87,7 @@ After DNS is active and public access is enabled: verify www/apex routing and re
 
 ## Verification
 
-`pnpm exec tsc --noEmit`, `pnpm test`, `pnpm build`, then `node scripts/smoke.mjs` after applying the local D1 migration. `pnpm smoke:crm` runs the CRM HTTP checks against an isolated local database. Automated checks cover publication/privacy, listing validation, payment reference/amount/currency and webhook signatures/replays. Local Worker HTTP smoke checks cover routes, metadata, sitemap, storage schema and anonymous API rejection. The HTTP smoke script checks 21 public routes/access/404 conditions and then exercises local uploads, review, save/enquiry, promotion quotes, unavailable-key checkout, listing edits and withdrawal using local-only QA identities. No real private user data, credentials or production listings are seeded by tests. The test submission is withdrawn on successful completion. Browser visual QA was unavailable in this session.
+`pnpm exec tsc --noEmit`, `pnpm test`, `pnpm build`, then `node scripts/smoke.mjs` after applying the local D1 migration. `pnpm smoke:crm` runs the CRM HTTP checks against an isolated local database, and `pnpm check:crm-migration` rehearses the CRM migration locally (optionally against a production export with `-- --from-export <file>`). Automated checks cover publication/privacy, listing validation, payment reference/amount/currency and webhook signatures/replays. Local Worker HTTP smoke checks cover routes, metadata, sitemap, storage schema and anonymous API rejection. The HTTP smoke script checks 21 public routes/access/404 conditions and then exercises local uploads, review, save/enquiry, promotion quotes, unavailable-key checkout, listing edits and withdrawal using local-only QA identities. No real private user data, credentials or production listings are seeded by tests. The test submission is withdrawn on successful completion. Browser visual QA was unavailable in this session.
 
 ## Media credits
 

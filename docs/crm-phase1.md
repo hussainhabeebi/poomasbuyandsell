@@ -1,6 +1,6 @@
 # Poomas business-for-sale CRM: Phase 1
 
-Status: **implemented on branch `claude/tender-cori-k7p0ku`; not deployed and not migrated in production.**
+Status: **implemented on branch `claude/tender-cori-k7p0ku` (PR #3, draft); not deployed and not migrated in production.** There is no staging environment: everything is tested locally, then deployed to production only with explicit approval.
 Phase 2 (matching, follow-up tasks, contact history, dashboard and exports) has not been started.
 
 ## Scope
@@ -45,140 +45,225 @@ Restricted fields are removed on the server before any response is sent, so they
 
 Sign-in uses the existing Google login. Everyone in `ADMIN_EMAILS` is a CRM administrator. Other staff need an active row in `crm_staff`, which an administrator adds under CRM → Team using the person's exact Google email address. Disabling a team member removes their access on their next request.
 
-## Database migration
+## Database migration review
 
-`drizzle/0002_crm_phase1.sql` is additive only:
-- It creates seven new tables: `crm_staff`, `crm_counters`, `crm_buyers`, `crm_sellers`, `crm_listings`, `crm_documents` and `crm_audit`, plus their indexes.
-- It seeds three counter rows with `INSERT OR IGNORE`.
-- It contains no `ALTER`, `DROP`, `UPDATE` or `DELETE`, and it does not reference any existing table. `test/crm-migration.test.ts` enforces this, and also checks that existing marketplace rows and schema are byte-identical after the migration runs.
+`drizzle/0002_crm_phase1.sql` contains 32 statements:
+- **7 × `CREATE TABLE`:** `crm_audit`, `crm_buyers`, `crm_counters`, `crm_documents`, `crm_listings`, `crm_sellers`, `crm_staff`.
+- **23 × `CREATE INDEX`:** 3 unique indexes for the record codes and 20 indexes for search.
+- **1 × `INSERT OR IGNORE`:** seeds the three record-number counters.
 
-### Before applying anywhere other than local
+It contains no `ALTER`, `DROP`, `UPDATE`, `DELETE`, `RENAME` or `REPLACE`. No statement names an existing table, and no new table or index name clashes with an existing one. The only foreign key points from `crm_listings` to `crm_sellers`; no existing table gains a foreign key. Wrangler applies the file as a single migration and records it in `d1_migrations`.
 
-**Production (read-only checks; nothing has been run against production)**
+How this has been checked:
 
-A Cloudflare account administrator should run these with a token that can read D1:
+| Check | Result |
+| --- | --- |
+| `test/crm-migration.test.ts` (runs with `pnpm test`) | The file contains only `crm_` objects and no destructive statements. After applying it on top of 0000 and 0001 with marketplace data present, existing tables, indexes and rows are identical. |
+| `node scripts/crm-migration-check.mjs`: a local rehearsal of the production upgrade using Wrangler's own `d1 migrations apply` | Before: 36 existing objects and rows, including listings, saved items, enquiries, promotions, media, rate limits, webhook events, Nomod audit and the 0000/0001 history. After: all 36 unchanged. Added: 7 tables, 23 indexes, 3 counter rows and 1 migration record. Re-running reports "No migrations to apply". |
+| The same script with `--from-export <file>`, using a dump in the same format as `wrangler d1 export` | Passes. With a dump that lacks migration history, it **stops** and asks for the history to be reconciled, which is the protection needed if production's history doesn't match. |
+| New code against a database **without** the migration | The whole marketplace works: home, properties, vehicles, listing pages, `/api/market`, sitemap, seller dashboard and admin review. CRM pages show "temporarily unavailable" and the CRM API returns 503, so nothing is written. |
+| New code against the migrated database | Everything above still works, and the CRM works. |
+
+Because the change only adds tables, the order of migration and deployment doesn't matter for the existing site. The safe order is still **migrate first, then deploy**, so the CRM works the moment the new code goes live.
+
+## Local testing (complete)
+
+Run from the repository root on this branch:
 
 ```bash
-pnpm exec wrangler d1 list
+pnpm install --frozen-lockfile
 ```
 
 ```bash
-pnpm exec wrangler d1 info site-creator-d1
+pnpm exec tsc --noEmit && pnpm test && pnpm build
 ```
 
 ```bash
-pnpm exec wrangler d1 migrations list site-creator-d1 --remote --config dist/server/wrangler.json
+pnpm smoke:crm
 ```
 
-Expected result: `0000` and `0001` are applied and `0002_crm_phase1.sql` is the only pending migration. If `0000` or `0001` show as pending even though the tables exist, the migration history differs from the schema. **Stop** and reconcile it first (see the README's Nomod section). Do not re-run `0000`.
+```bash
+pnpm check:crm-migration
+```
 
-**Backup arrangements to confirm:**
-1. **D1 Time Travel.** It is built into D1 and lets you restore to any minute in the last 30 days on the Workers Paid plan (7 days on Free). Check the plan, then record a bookmark immediately before migrating:
+| Check | Result |
+| --- | --- |
+| Type check | Pass |
+| `pnpm test` | 156/156 pass, including 32 CRM tests on SQLite with the real migration files |
+| `pnpm build` | Pass |
+| `pnpm smoke:crm` | 44 HTTP checks pass against a local Worker and an isolated local database: sign-in, roles, hidden fields, duplicate warning, approval and public visibility, documents, cross-origin rejection, spam trap, Turnstile failing closed |
+| `scripts/crm-migration-check.mjs` | Pass, in both sample mode and export mode, as described above |
+| Existing `scripts/smoke.mjs` | The marketplace flow passes: 21 HTTP checks plus upload, moderation, save, enquiry, promotion quote and withdrawal. Its 404 step hangs in a freshly started local dev server **on `main` too**. The 404 routes themselves respond correctly (404 in under 50 ms) on a running local Worker. |
+| Browser check (Playwright, desktop and iPhone 13, admin and sales) | No horizontal scrolling and no page errors |
+| `pnpm lint` | New files clean; the 27 issues reported are the same as on `main` |
+
+**Cannot be tested locally:** a successful Turnstile verification. Cloudflare's verification service isn't reachable from the development sandbox. Rejection without a valid token is tested; the first successful live submission is part of the post-deployment checks below.
+
+## Production configuration
+
+Worker: `poomasbuyandsell`. D1 binding `DB` → database `site-creator-d1`. R2 binding `BUCKET` → bucket `site-creator-r2`.
+
+| Name | Type | Status | Purpose |
+| --- | --- | --- | --- |
+| `TURNSTILE_SECRET_KEY` | Worker secret | **New, required** | Server-side Turnstile check. Without it, the public forms refuse all submissions. |
+| `TURNSTILE_SITE_KEY` | Worker secret (it isn't confidential) | **New, required** | Shown in the public forms. Set it as a secret so `wrangler deploy` doesn't remove it (see the note below). |
+| `ADMIN_EMAILS` | existing | Required, unchanged | Marketplace administrators, who also become CRM administrators |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` | existing secrets | Required, unchanged | Google sign-in, used by the CRM too. No new redirect URIs are needed. |
+| `PAYMENT_RETURN_ORIGIN` | var in the built `wrangler.json` | Unchanged | |
+| `NOMOD_*`, `OPENAI_API_KEY`, `OPENAI_MODEL` | existing, optional | Unchanged | Not used by the CRM |
+| `AUTH_TRUST_LOCAL_HEADERS` | — | **Must not be set** | For local testing only |
+| `DB`, `BUCKET` | bindings | Unchanged | The CRM uses new tables in the same database and the `crm-documents/` prefix in the same bucket |
+| GitHub Actions: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (secrets), `CLOUDFLARE_D1_DATABASE_ID` (variable) | existing | `CLOUDFLARE_D1_DATABASE_ID` should be set to the real UUID | Used by the deploy workflow |
+
+**Why both Turnstile keys are secrets:** `wrangler deploy` replaces dashboard *variables* with those in the built config, unless `keep_vars` is set. Secrets survive deploys.
+
+## Production deployment checklist
+
+Every step that writes to production is marked **APPROVAL**. Nothing is applied, deployed or merged without the owner's explicit go-ahead.
+
+Run everything from a clean checkout of this branch on a trusted administrator machine. You need a Cloudflare API token with D1 Edit and Workers Scripts Edit for the Poomas account (`wrangler login` also works).
+
+### A. Pre-flight (read-only)
+
+1. **Confirm the Cloudflare account:**
 
    ```bash
-   pnpm exec wrangler d1 time-travel info site-creator-d1
+   pnpm exec wrangler whoami
    ```
 
-2. **Full export before migrating.** Store the file securely outside the repository, because it contains personal data:
+2. **Find the database and its UUID.** Note the UUID, size and plan:
 
    ```bash
-   pnpm exec wrangler d1 export site-creator-d1 --remote --output=poomas-d1-before-crm.sql
+   pnpm exec wrangler d1 list
    ```
 
-3. **R2.** R2 has no built-in point-in-time restore. CRM documents are stored under the `crm-documents/` prefix in the existing `site-creator-r2` bucket. Phase 2 can add a scheduled backup if required.
+   ```bash
+   pnpm exec wrangler d1 info site-creator-d1
+   ```
 
-The repository currently has **no automated backups**. The GitHub deploy workflow builds and deploys only; it does not run migrations or backups.
+3. **Confirm the live Worker uses that database.** In the dashboard, go to Workers & Pages → `poomasbuyandsell` → Settings → Bindings, and check that `DB` points to `site-creator-d1` and `BUCKET` to `site-creator-r2`.
 
-### Applying (only after explicit approval)
+4. **Build with the database ID pinned:**
 
-```bash
-pnpm exec wrangler d1 migrations apply site-creator-d1 --remote --config dist/server/wrangler.json
-```
+   ```bash
+   export CLOUDFLARE_D1_DATABASE_ID=<uuid from step 2>
+   ```
+
+   ```bash
+   pnpm install --frozen-lockfile && pnpm build
+   ```
+
+5. **Check migration history.** The only pending migration must be `0002_crm_phase1.sql`. If 0000 or 0001 show as pending, **stop**: the history doesn't match the schema.
+
+   ```bash
+   pnpm exec wrangler d1 migrations list site-creator-d1 --remote --config dist/server/wrangler.json
+   ```
+
+6. **Confirm there are no CRM tables yet.** The result must be empty:
+
+   ```bash
+   pnpm exec wrangler d1 execute site-creator-d1 --remote --config dist/server/wrangler.json --command "SELECT name FROM sqlite_master WHERE name LIKE 'crm_%' OR name LIKE 'idx_crm_%'"
+   ```
+
+7. **Record the marketplace row counts** so you can compare them after the migration:
+
+   ```bash
+   pnpm exec wrangler d1 execute site-creator-d1 --remote --config dist/server/wrangler.json --command "SELECT (SELECT COUNT(*) FROM listings) AS listings,(SELECT COUNT(*) FROM saved) AS saved,(SELECT COUNT(*) FROM enquiries) AS enquiries,(SELECT COUNT(*) FROM promotions) AS promotions,(SELECT COUNT(*) FROM media) AS media"
+   ```
+
+8. **Check the Worker's secrets.** Confirm the required secrets exist and `AUTH_TRUST_LOCAL_HEADERS` is not set. This lists names only, never values:
+
+   ```bash
+   pnpm exec wrangler secret list --name poomasbuyandsell
+   ```
+
+9. **Run the local checks:**
+
+   ```bash
+   pnpm test && pnpm smoke:crm && node scripts/crm-migration-check.mjs
+   ```
+
+### B. Backups (immediately before the migration)
+
+1. **Record a Time Travel restore point.** Write down the bookmark and the UTC time. Time Travel keeps 30 days of history on Workers Paid and 7 days on Free:
+
+   ```bash
+   pnpm exec wrangler d1 time-travel info site-creator-d1 --config dist/server/wrangler.json
+   ```
+
+2. **Take a full SQL export.** Large exports can briefly hold up other requests to the database; Poomas's database is small. The file contains personal data: store it encrypted, outside the repository, and never commit or email it.
+
+   ```bash
+   pnpm exec wrangler d1 export site-creator-d1 --remote --config dist/server/wrangler.json --output=poomas-d1-before-crm-$(date -u +%Y%m%dT%H%MZ).sql
+   ```
+
+3. **Verify the export.** The file must be non-empty and contain `CREATE TABLE` and `INSERT INTO` lines for `listings` and `d1_migrations`. Then rehearse the migration on it locally; it must print PASS. The script deletes its local copy afterwards.
+
+   ```bash
+   node scripts/crm-migration-check.mjs --from-export <export file>
+   ```
+
+4. **R2:** the migration doesn't touch R2 and no CRM documents exist yet, so no R2 backup is needed for this change.
+
+### C. Turnstile configuration (APPROVAL: creates config on the live Worker)
+
+1. **Create the widget.** In the Cloudflare dashboard, go to Turnstile → Add widget. Hostnames: `www.poomasbuyandsell.com` and `poomasbuyandsell.com`. Mode: Managed.
+
+2. **Store both keys as secrets.** Each command prompts for the value; never put a key in a command line, the repository or chat. Old code ignores these keys.
+
+   ```bash
+   pnpm exec wrangler secret put TURNSTILE_SECRET_KEY --name poomasbuyandsell
+   ```
+
+   ```bash
+   pnpm exec wrangler secret put TURNSTILE_SITE_KEY --name poomasbuyandsell
+   ```
+
+### D. Migration (APPROVAL)
+
+1. **Apply the migration** and confirm the prompt:
+
+   ```bash
+   pnpm exec wrangler d1 migrations apply site-creator-d1 --remote --config dist/server/wrangler.json
+   ```
+
+2. **Verify.** Re-run A5: there should be no pending migrations. Re-run A6: the 7 `crm_` tables and 23 `crm_` indexes should be listed. Re-run A7: the counts should be identical. The live site keeps running the old code, which ignores the new tables.
+
+### E. Deploy (APPROVAL)
+
+1. **Check the GitHub setting.** Confirm the repository variable `CLOUDFLARE_D1_DATABASE_ID` equals the UUID from A2 (Settings → Secrets and variables → Actions → Variables).
+2. **Merge.** Mark PR #3 *Ready for review*, then merge it. The merge to `main` runs `.github/workflows/deploy.yml`, which builds and runs `wrangler deploy`. The workflow doesn't run migrations; that was done in D.
+3. **Watch the run.** Follow the GitHub Actions run until it succeeds.
+
+### F. Post-deployment checks (production)
+
+1. **Existing site:** confirm `/`, `/properties`, `/vehicles`, a published listing page, `/sell` and `/admin` work as before.
+2. **CRM:** sign in at `/admin/crm` as an `ADMIN_EMAILS` account. The overview should load with zero records.
+3. **Team:** add the sales and read-only staff under CRM → Team. Sign in as a sales user and confirm that seller phone, email, profit and internal notes show as Restricted.
+4. **Public forms:** submit `/enquiry/buyer` once with a real phone number, name it "TEST – Poomas", and check that a BUY- record appears with source Website. CRM records can't be deleted, so set the test record's status to Lost and note it in its internal notes. Repeat for `/enquiry/seller`.
+5. **Public listings:** `/businesses-for-sale` should show "No businesses listed right now" until an administrator approves a listing.
 
 ### Rollback
 
-1. **Code only:** redeploy the previous commit. The new tables are unused by the existing site, so leaving them in place is harmless.
-2. **Restore the whole database to before the migration:**
+- **Code** (fast, no data loss): revert the merge commit on `main` with a pull request, which redeploys the previous version. Alternatively, roll back to the previous version immediately:
 
-   ```bash
-   pnpm exec wrangler d1 time-travel restore site-creator-d1 --bookmark=<bookmark recorded before migrating>
-   ```
+  ```bash
+  pnpm exec wrangler rollback --name poomasbuyandsell
+  ```
 
-   This also discards any marketplace changes made after the bookmark.
-3. **Remove only the CRM tables, keeping all other data.** This permanently deletes CRM data, so export first:
+  The CRM tables can stay; the old code ignores them.
+- **Remove only the CRM** (deletes CRM data permanently, so export first):
 
-   ```sql
-   DROP TABLE crm_audit; DROP TABLE crm_documents; DROP TABLE crm_listings; DROP TABLE crm_sellers; DROP TABLE crm_buyers; DROP TABLE crm_counters; DROP TABLE crm_staff;
-   DELETE FROM d1_migrations WHERE name = '0002_crm_phase1.sql';
-   ```
+  ```sql
+  DROP TABLE crm_audit; DROP TABLE crm_documents; DROP TABLE crm_listings; DROP TABLE crm_sellers; DROP TABLE crm_buyers; DROP TABLE crm_counters; DROP TABLE crm_staff;
+  DELETE FROM d1_migrations WHERE name = '0002_crm_phase1.sql';
+  ```
 
-## Configuration
+  Run it with `wrangler d1 execute site-creator-d1 --remote --command "…"`. Dropping a table also drops its indexes.
+- **Full database restore** (last resort; it also discards marketplace changes made after the bookmark):
 
-| Variable | Where | Notes |
-| --- | --- | --- |
-| `TURNSTILE_SITE_KEY` | Worker variable | Create a Turnstile widget in the Cloudflare dashboard for the staging or production hostname. The site key is public. |
-| `TURNSTILE_SECRET_KEY` | Worker **secret** | Without it, the public forms show "temporarily unavailable" and reject submissions (fail closed). |
-| `ADMIN_EMAILS` | existing | These users become CRM administrators. |
+  ```bash
+  pnpm exec wrangler d1 time-travel restore site-creator-d1 --config dist/server/wrangler.json --bookmark=<bookmark from B1>
+  ```
 
-Never set `AUTH_TRUST_LOCAL_HEADERS` on staging or production.
-
-## Staging instructions
-
-The aim is a separate Worker and database so production is untouched.
-
-1. **Create staging resources.** Create a staging D1 database and an R2 bucket. For example:
-
-   ```bash
-   pnpm exec wrangler d1 create poomas-staging
-   ```
-
-   ```bash
-   pnpm exec wrangler r2 bucket create poomas-staging
-   ```
-
-2. **Build a staging config.** Run `pnpm build`, then copy `dist/server/wrangler.json` to a staging config and change three things: `name` to `poomasbuyandsell-staging`, the D1 `database_name`/`database_id` to the staging database, and the R2 `bucket_name` to the staging bucket. Do not reuse the production names.
-
-3. **Apply migrations to the staging database only:**
-
-   ```bash
-   pnpm exec wrangler d1 migrations apply poomas-staging --remote --config <staging config>
-   ```
-
-4. **Set staging variables and secrets:** `ADMIN_EMAILS`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` and `TURNSTILE_SECRET_KEY` (secrets), plus `TURNSTILE_SITE_KEY`. Add the staging callback URL (`https://<staging host>/auth/google/callback`) to the Google OAuth client.
-
-5. **Deploy:**
-
-   ```bash
-   pnpm exec wrangler deploy --config <staging config>
-   ```
-
-6. **Acceptance walk-through:**
-   1. Sign in as an admin and add a sales user and a read-only user.
-   2. Submit both public forms. The records should appear with source Website and status New.
-   3. Create a buyer with a phone number that already exists. You should see the duplicate warning with a link.
-   4. As sales staff, confirm seller phone, email, estimated profit and internal notes show as Restricted.
-   5. Create a listing, verify the seller, approve the listing as an admin, and confirm it appears at `/businesses-for-sale`.
-   6. Set the listing to Reserved and confirm it disappears.
-   7. Upload and download a document as an admin, and confirm sales staff cannot.
-   8. Check everything on a phone and a desktop.
-   9. Confirm `/properties`, `/vehicles`, `/sell` and `/admin` behave exactly as before.
-
-## Automated checks
-
-```bash
-pnpm test
-```
-
-Runs unit and integration tests against real SQLite with the real migrations.
-
-```bash
-pnpm build && pnpm smoke:crm
-```
-
-Starts a local Worker with an isolated local database and makes more than 40 HTTP checks of authentication, roles, redaction, approval and documents. The final live Turnstile step needs outbound access to challenges.cloudflare.com; without it, the test only confirms the form fails closed.
-
-```bash
-node scripts/smoke.mjs
-```
-
-The existing marketplace smoke test.
+  If the restore window has passed, import the B2 export into a new database instead.
