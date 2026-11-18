@@ -1,0 +1,14 @@
+import { BUSINESS_TYPES, EMIRATES } from '../catalog.ts';
+export { EMIRATES };
+export const CRM_CATEGORIES = [...BUSINESS_TYPES, 'Other'];
+export const ROLES = ['admin', 'sales', 'readonly'] as const;
+export type Role = typeof ROLES[number];
+export const BUYER_STATUSES = ['New', 'Contacted', 'Qualified', 'Matched', 'Viewing Scheduled', 'Negotiation', 'Won', 'Lost', 'On Hold'] as const;
+export const SELLER_STATUSES = ['New', 'Verification Pending', 'Active', 'Reserved', 'Under Negotiation', 'Sold', 'Withdrawn'] as const;
+export const LISTING_STATUSES = ['Draft', 'Verification Pending', 'Active', 'Reserved', 'Under Negotiation', 'Sold', 'Withdrawn'] as const;
+export const SOURCES = ['Website', 'Phone', 'WhatsApp', 'Social media', 'Referral', 'Walk-in', 'Other'] as const;
+export const CONTACT_METHODS = ['Phone', 'WhatsApp', 'Email'] as const;
+export const SELLER_VERIFICATION = ['Unverified', 'Owner verified', 'Authorized representative verified', 'Rejected'] as const;
+export const DOCUMENT_VERIFICATION = ['Pending', 'Verified', 'Rejected'] as const;
+export const AUTHORIZATION = ['Pending', 'Authorized', 'Rejected'] as const;
+export const SELLER_RELATIONSHIP = ['Owner', 'Authorized representative'] as const;
