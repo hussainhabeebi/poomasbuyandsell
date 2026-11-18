@@ -38,6 +38,8 @@ Configure through hosting environment settings; never commit secrets or place th
 | `NOMOD_WEBHOOK_SECRET` (secret) | Nomod API webhook Svix signing secret |
 | `OPENAI_API_KEY` (secret) | Enables real AI search and listing drafting |
 | `OPENAI_MODEL` | Optional model name; default `gpt-4.1-mini` |
+| `TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key for the public CRM enquiry forms (public, not secret) |
+| `TURNSTILE_SECRET_KEY` (secret) | Turnstile secret key; without it the public enquiry forms fail closed |
 
 Ordinary filters and manual listing creation work without an AI key. AI requests fail clearly when unavailable rather than providing simulated AI responses. Prompts only include relevant public inventory and seller-provided text. Never upload confidential documents in an AI prompt.
 
@@ -49,6 +51,10 @@ Ordinary filters and manual listing creation work without an AI key. AI requests
 4. Published listings appear in category search, standalone detail pages and sitemap. Sold listings remain accessible but are noindex and excluded from active inventory. Withdrawn/rejected/pending listings are not publicly accessible.
 5. Buyers can save a listing, send enquiries, request viewings/test drives, discuss offers and open seller WhatsApp. Enquiries persist in buyer/seller dashboards. No external notification messages are sent automatically in this release.
 6. Seller requests a promotion. Admin sets the confirmed AED quote. Payment requires a published listing. Package prices are not invented or hardcoded.
+
+## Business-for-sale CRM (Phase 1)
+
+Staff-only CRM at `/admin/crm` for buyers (BUY-), sellers (SEL-) and business listings (LST-), with public enquiry forms at `/enquiry/buyer` and `/enquiry/seller` and approved listings at `/businesses-for-sale`. It is separate from the property/vehicle marketplace and uses additive migration `drizzle/0002_crm_phase1.sql`. Roles: `ADMIN_EMAILS` are administrators; other staff are added under CRM → Team. See [docs/crm-phase1.md](docs/crm-phase1.md) for permissions, local testing, the production deployment checklist, exact backup and migration commands, and required configuration. **Do not apply the migration to production without approval.**
 
 ## Nomod integration
 
@@ -81,7 +87,7 @@ After DNS is active and public access is enabled: verify www/apex routing and re
 
 ## Verification
 
-`pnpm exec tsc --noEmit`, `pnpm test`, `pnpm build`, then `node scripts/smoke.mjs` after applying the local D1 migration. Automated checks cover publication/privacy, listing validation, payment reference/amount/currency and webhook signatures/replays. Local Worker HTTP smoke checks cover routes, metadata, sitemap, storage schema and anonymous API rejection. The HTTP smoke script checks 21 public routes/access/404 conditions and then exercises local uploads, review, save/enquiry, promotion quotes, unavailable-key checkout, listing edits and withdrawal using local-only QA identities. No real private user data, credentials or production listings are seeded by tests. The test submission is withdrawn on successful completion. Browser visual QA was unavailable in this session.
+`pnpm exec tsc --noEmit`, `pnpm test`, `pnpm build`, then `node scripts/smoke.mjs` after applying the local D1 migration. `pnpm smoke:crm` runs the CRM HTTP checks against an isolated local database, and `pnpm check:crm-migration` rehearses the CRM migration locally (optionally against a production export with `-- --from-export <file>`). Automated checks cover publication/privacy, listing validation, payment reference/amount/currency and webhook signatures/replays. Local Worker HTTP smoke checks cover routes, metadata, sitemap, storage schema and anonymous API rejection. The HTTP smoke script checks 21 public routes/access/404 conditions and then exercises local uploads, review, save/enquiry, promotion quotes, unavailable-key checkout, listing edits and withdrawal using local-only QA identities. No real private user data, credentials or production listings are seeded by tests. The test submission is withdrawn on successful completion. Browser visual QA was unavailable in this session.
 
 ## Media credits
 
